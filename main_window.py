@@ -251,15 +251,16 @@ class MainWindow(tk.Tk):
         self._tx_resume_ms        = 0
         self._tx_section_start_ms = 0
 
-        # PTT ON
+        # PTT ON → retardo configurable → audio
         self.ptt.ptt_on()
         self._np.set_ptt_state(True)
-
-        # Iniciar reproducción de la primera sección
-        self._play_current_section()
-
-        # Iniciar tick de actualización UI
-        self._tx_tick()
+        ptt_ms = self._ptt_delay_ms()
+        if ptt_ms > 0:
+            self.after(ptt_ms, self._play_current_section)
+            self.after(ptt_ms, self._tx_tick)
+        else:
+            self._play_current_section()
+            self._tx_tick()
 
         # Actualizar vistas
         self._views["eventos"].update_on_air(evento_id)
@@ -308,14 +309,18 @@ class MainWindow(tk.Tk):
             self._tx_stop()
 
     def _start_next_section(self) -> None:
-        """Tras el intervalo entre secciones: PTT ON y comienza la siguiente."""
+        """Tras el intervalo entre secciones: PTT ON → retardo → audio."""
         if self._tx_stop_flag:
             return
         self._tx_sec_elapsed = 0.0
         self._tx_pause_state = "tx"
         self.ptt.ptt_on()
         self._np.set_ptt_state(True)
-        self._play_current_section()
+        ptt_ms = self._ptt_delay_ms()
+        if ptt_ms > 0:
+            self.after(ptt_ms, self._play_current_section)
+        else:
+            self._play_current_section()
 
     def _tx_tick(self) -> None:
         """Tick de 250ms — actualiza progreso y avanza sección (si tiene duración)."""
@@ -413,6 +418,10 @@ class MainWindow(tk.Tk):
         self._np.set_playing(True)
         self._tx_tick()
         self._set_status("Transmitiendo...")
+
+    def _ptt_delay_ms(self) -> int:
+        """Retardo en ms entre PTT ON y el inicio del audio (configurado en Ajustes)."""
+        return max(0, int(float(self.cfg.get("ptt_on_delay", 0)) * 1000))
 
     def _tx_stop(self, silent: bool = False) -> None:
         self._tx_stop_flag   = True
@@ -534,18 +543,23 @@ class MainWindow(tk.Tk):
             self._end_pause_sequence()
 
     def _end_pause_sequence(self) -> None:
-        """PTT ON → reproduce anuncio de regreso → reanuda evento."""
-        from modules.tts.tts_manager import get_audio_duration
+        """PTT ON → retardo configurable → anuncio de regreso → reanuda evento."""
         self._tx_pause_state = "resuming"
-        # PTT ON ANTES del anuncio (preferencia del usuario)
         self.ptt.ptt_on()
         self._np.set_ptt_state(True)
         self._set_status("Reanudando transmisión — anunciando…")
         self._np.set_pause_info(None, "▶")
+        self.after(self._ptt_delay_ms(), self._play_resume_announcement)
 
+    def _play_resume_announcement(self) -> None:
+        """Reproduce el anuncio de continuamos y programa la reanudación del evento."""
+        if self._tx_stop_flag:
+            return
+        from modules.tts.tts_manager import get_audio_duration
         delay_ms = 0
         res_file = self.cfg.get("pause_resume_file", "")
-        log.info("Anuncio de continuamos: '%s' — existe=%s", res_file, Path(res_file).is_file() if res_file else False)
+        log.info("Anuncio de continuamos: '%s' — existe=%s",
+                 res_file, Path(res_file).is_file() if res_file else False)
         if res_file and Path(res_file).is_file():
             ok, msg = self._player.play(res_file)
             log.info("play(anuncio_continuamos) → ok=%s msg=%s", ok, msg)
@@ -553,8 +567,7 @@ class MainWindow(tk.Tk):
             delay_ms = int(dur * 1000) + 400 if dur > 0 else 1000
             log.info("Duración anuncio continuamos: %.2fs — espera %dms", dur, delay_ms)
         else:
-            log.warning("Archivo de anuncio de continuamos no encontrado: '%s'", res_file)
-
+            log.warning("Archivo anuncio continuamos no encontrado: '%s'", res_file)
         self.after(delay_ms, self._on_resume_announced)
 
     def _on_resume_announced(self) -> None:

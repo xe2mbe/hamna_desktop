@@ -958,6 +958,7 @@ class ViewAjustes(tk.Frame):
             ("DURACIÓN DE PAUSA (seg)",            "pause_duration",     5,   600),
             ("ALERTA ANTES DE PAUSA (seg)",        "pause_alert_before", 0,    60),
         ]):
+
             f = tk.Frame(row, bg=C["surface"])
             f.grid(row=0, column=col, sticky="ew",
                    padx=(0 if col == 0 else 8, 0))
@@ -975,6 +976,36 @@ class ViewAjustes(tk.Frame):
             sp.insert(0, str(self.cfg.get(key, lo)))
             sp.pack(anchor="w")
             setattr(self, f"_pause_sp_{key}", sp)
+
+        # ── Retardo PTT ON ─────────────────────────────────────────────────
+        row2 = tk.Frame(body_t, bg=C["surface"])
+        row2.pack(fill=tk.X, pady=(12, 0))
+        tk.Frame(body_t, bg=C["border"], height=1).pack(fill=tk.X, pady=(8, 0))
+        row3 = tk.Frame(body_t, bg=C["surface"])
+        row3.pack(fill=tk.X, pady=(8, 0))
+
+        f_ptt = tk.Frame(row3, bg=C["surface"])
+        f_ptt.pack(side="left")
+        tk.Label(f_ptt, text="RETARDO PTT ON (seg)",
+                 font=FONTS["badge"], bg=C["surface"], fg=C["text3"]
+                 ).pack(anchor="w", pady=(0, 4))
+        sp_ptt = tk.Spinbox(f_ptt, from_=0, to=10, width=8,
+                            bg=C["input_bg"], fg=C["text"],
+                            buttonbackground=C["surface2"],
+                            relief="flat", font=FONTS["body"],
+                            highlightthickness=1,
+                            highlightcolor=C["border"],
+                            highlightbackground=C["border"])
+        sp_ptt.delete(0, "end")
+        sp_ptt.insert(0, str(self.cfg.get("ptt_on_delay", 0)))
+        sp_ptt.pack(anchor="w")
+        self._pause_sp_ptt_on_delay = sp_ptt
+
+        tk.Label(row3,
+                 text="Silencio entre PTT ON y el inicio del audio. "
+                      "Compensa la latencia del sistema de transmisión (0 = sin retardo).",
+                 font=FONTS["small"], bg=C["surface"], fg=C["text3"],
+                 wraplength=340, justify="left").pack(side="left", padx=(16, 0))
 
         # ── Archivos de audio ──────────────────────────────────────────────
         body_a = self._card(self._pauses_body, "Archivos de Audio", "🔊")
@@ -1041,7 +1072,8 @@ class ViewAjustes(tk.Frame):
 
     def _save_pauses(self) -> None:
         self.cfg["pause_enabled"] = bool(self._pause_enabled_var.get())
-        for key in ("pause_tx_time", "pause_duration", "pause_alert_before"):
+        for key in ("pause_tx_time", "pause_duration", "pause_alert_before",
+                    "ptt_on_delay"):
             try:
                 sp = getattr(self, f"_pause_sp_{key}")
                 self.cfg[key] = int(sp.get())
