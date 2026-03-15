@@ -1,0 +1,32 @@
+# Entorno virtual
+.venv/
+venv/
+env/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+dist/
+build/
+
+# Base de datos local
+hamna.db
+
+# Log de ejecución
+hamna.log
+
+# Archivos de audio temporales
+output_temp.mp3
+output_temp.wav
+=2.6.0
+
+# Configuración local (contiene rutas absolutas de la máquina)
+# settings.json se incluye como plantilla de referencia
+
+# Archivos de sistema
+Thumbs.db
+.DS_Store
+desktop.ini
