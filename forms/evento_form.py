@@ -356,7 +356,7 @@ class _BibliotecaPicker(HDialog):
         mid.pack(side=tk.LEFT, fill=tk.Y)
         tk.Frame(mid, bg=C["bg"]).pack(expand=True, fill=tk.Y)  # spacer top
         HButton(mid, "›", command=self._mover_a_sel,
-                variant="primary", width=2).pack(pady=3)
+                variant="primary").pack(pady=3)
         tk.Frame(mid, bg=C["bg"]).pack(expand=True, fill=tk.Y)  # spacer bot
 
         # Panel derecho — secciones seleccionadas con orden
