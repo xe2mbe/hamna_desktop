@@ -182,22 +182,31 @@ def apply_theme(root: tk.Misc) -> None:
 class HButton(tk.Canvas):
     """Modern rounded-corner button.
 
-    Visually consistent: fixed height, minimum width, smooth hover.
-    API compatible with the previous tk.Button-based HButton:
-        .config(text=..., state=..., command=...)
-        .set_variant(variant)
-        pack / grid / place work normally
+    Variants and their intent:
+        primary  — main / neutral action          (blue fill)
+        success  — save / confirm / connect       (green fill)
+        danger   — delete / disconnect / clear    (red fill)
+        warning  — caution action                 (amber fill)
+        ghost    — secondary / outlined style     (transparent + border)
+        muted    — cancel / dismiss               (mid-gray fill)
+        on_air   — PTT transmitting               (deep red + border)
+
+    Colors are read from C at draw-time so theme changes are respected.
     """
 
-    VARIANTS = {
-        "primary": (C["accent"],   C["accent_h"],   "#ffffff"),
-        "success": (C["success"],  C["success_h"],  "#ffffff"),
-        "danger":  (C["danger"],   C["danger_h"],   "#ffffff"),
-        "warning": (C["warning"],  C["warning_h"],  "#ffffff"),
-        "ghost":   (C["surface2"], C["border"],     C["text2"]),
-        "muted":   (C["surface"],  C["surface2"],   C["text3"]),
-        "on_air":  (C["on_air"],   C["danger_h"],   "#ffffff"),
+    # Variant spec:  (bg, bg_hover, fg, border, border_hover)
+    # bg="" means transparent (use parent bg).  border=None = no border.
+    _VARIANTS: dict[str, tuple] = {
+        "primary": ("accent",   "accent_h",   "#ffffff",  None,       None),
+        "success": ("success",  "success_h",  "#ffffff",  None,       None),
+        "danger":  ("danger",   "danger_h",   "#ffffff",  None,       None),
+        "warning": ("warning_h","_amber_h",   "#ffffff",  None,       None),
+        "ghost":   ("",         "surface2",   "text2",    "border",   "accent"),
+        "muted":   ("_gray",    "surface2",   "text2",    "border",   None),
+        "on_air":  ("on_air",   "danger_h",   "#ffffff",  "danger_h", "danger_h"),
     }
+    # Extra literal colors not in palette
+    _EXTRA = {"_amber_h": "#e6a817", "_gray": "#3a404a"}
 
     _H     = 30    # fixed pixel height
     _R     = 5     # corner radius
@@ -209,33 +218,27 @@ class HButton(tk.Canvas):
                  icon: str = "", **kw):
         import tkinter.font as _tkfont
 
-        bg, hover, fg = self.VARIANTS.get(variant, self.VARIANTS["ghost"])
         self._label   = f"{icon}  {text}" if icon else text
-        self._bg_col  = bg
-        self._hov_col = hover
-        self._fg_col  = fg
         self._variant = variant
         self._command = command
         self._hot     = False
         self._enabled = True
 
-        # Measure text to set canvas width
+        # Measure text to auto-size canvas width
         _mf = _tkfont.Font(family=FONTS["body"][0], size=FONTS["body"][1])
         cw  = max(self._MIN_W, _mf.measure(self._label) + self._PX * 2)
         if width:
             cw = max(cw, width)
 
-        # Canvas bg must match parent so rounded corners blend seamlessly
+        # Canvas bg = parent bg so rounded corners blend seamlessly
         try:
             pbg = parent.cget("bg")
         except Exception:
             pbg = C["bg"]
 
-        # Remove tk.Button-only kwargs that Canvas doesn't accept
         for _k in ("padx", "pady", "bd", "relief", "anchor",
                    "activebackground", "activeforeground"):
             kw.pop(_k, None)
-
         kw["highlightthickness"] = 0
         kw["cursor"] = "hand2"
         super().__init__(parent, width=cw, height=self._H, bg=pbg, **kw)
@@ -247,10 +250,31 @@ class HButton(tk.Canvas):
         self.bind("<ButtonRelease-1>", self._on_release)
         self._draw()
 
+    # ── color helpers ──────────────────────────────────────────────────────
+    def _resolve(self, key: str | None) -> str | None:
+        """Resolve a palette key or literal hex color to an actual hex color."""
+        if key is None or key == "":
+            return None
+        if key.startswith("#"):
+            return key
+        if key in self._EXTRA:
+            return self._EXTRA[key]
+        return C.get(key, "#888888")
+
+    def _colors(self) -> tuple:
+        """Return (fill, fill_hover, fg, border, border_hover) for current variant."""
+        spec = self._VARIANTS.get(self._variant, self._VARIANTS["ghost"])
+        bg_key, bgh_key, fg_raw, bdr_key, bdrh_key = spec
+        fill      = self._resolve(bg_key)      # None = transparent
+        fill_h    = self._resolve(bgh_key)
+        fg        = self._resolve(fg_raw) or C["text"]
+        border    = self._resolve(bdr_key)
+        border_h  = self._resolve(bdrh_key)
+        return fill, fill_h, fg, border, border_h
+
     # ── drawing ────────────────────────────────────────────────────────────
     def _rrect(self, x0: float, y0: float, x1: float, y1: float,
                r: int, **kw):
-        """Draw a smooth rounded rectangle using an 8-point B-spline polygon."""
         pts = [x0+r, y0,  x1-r, y0,
                x1,   y0+r, x1,  y1-r,
                x1-r, y1,   x0+r, y1,
@@ -265,27 +289,33 @@ class HButton(tk.Canvas):
                 w = int(self["width"])
             except Exception:
                 w = self._MIN_W
-        h   = self._H
-        r   = self._R
-        pad = 1  # inset so border isn't clipped
+        h, r, pad = self._H, self._R, 1
 
-        fill = self._hov_col if self._hot else self._bg_col
+        fill, fill_h, fg, border, border_h = self._colors()
+
         if not self._enabled:
-            fill = C["surface2"]
+            # Disabled: uniform muted appearance
+            eff_fill   = C["surface2"]
+            eff_border = C["border"]
+            eff_fg     = C["text3"]
+        else:
+            eff_fill   = fill_h  if self._hot else fill
+            eff_border = border_h if (self._hot and border_h) else border
+            eff_fg     = fg
 
-        # Filled rounded rectangle
-        self._rrect(pad, pad, w - pad, h - pad, r,
-                    fill=fill, outline="", tags="bg")
-
-        # Subtle outline for low-contrast variants
-        if self._variant in ("ghost", "muted"):
+        # Background fill (None = transparent, skip drawing)
+        if eff_fill:
             self._rrect(pad, pad, w - pad, h - pad, r,
-                        fill="", outline=C["border"], width=1, tags="bdr")
+                        fill=eff_fill, outline="", tags="bg")
+
+        # Border
+        if eff_border:
+            self._rrect(pad, pad, w - pad, h - pad, r,
+                        fill="", outline=eff_border, width=1, tags="bdr")
 
         # Label
-        fg = C["text3"] if not self._enabled else self._fg_col
         self.create_text(w // 2, h // 2, text=self._label,
-                         font=FONTS["body"], fill=fg,
+                         font=FONTS["body"], fill=eff_fg,
                          anchor="center", tags="lbl")
 
     # ── events ─────────────────────────────────────────────────────────────
@@ -299,7 +329,7 @@ class HButton(tk.Canvas):
         self._draw()
 
     def _on_press(self, _e) -> None:
-        pass  # could add pressed-darken effect here
+        pass
 
     def _on_release(self, _e) -> None:
         if self._enabled and callable(self._command):
@@ -311,21 +341,16 @@ class HButton(tk.Canvas):
         redraw = False
         if "text" in kw:
             self._label = kw.pop("text")
-            # Resize canvas width to fit new text
             _mf = _tkfont.Font(family=FONTS["body"][0], size=FONTS["body"][1])
             cw  = max(self._MIN_W, _mf.measure(self._label) + self._PX * 2)
             super().config(width=cw)
             redraw = True
         if "state" in kw:
             self._enabled = kw.pop("state") != "disabled"
-            if self._enabled:
-                super().config(cursor="hand2")
-            else:
-                super().config(cursor="")
+            super().config(cursor="hand2" if self._enabled else "")
             redraw = True
         if "command" in kw:
             self._command = kw.pop("command")
-        # Ignore tk.Button-only keys
         for _k in ("padx", "pady", "bd", "relief", "anchor",
                    "activebackground", "activeforeground",
                    "fg", "bg", "font"):
@@ -338,10 +363,6 @@ class HButton(tk.Canvas):
     configure = config  # type: ignore[assignment]
 
     def set_variant(self, variant: str) -> None:
-        bg, hover, fg = self.VARIANTS.get(variant, self.VARIANTS["ghost"])
-        self._bg_col  = bg
-        self._hov_col = hover
-        self._fg_col  = fg
         self._variant = variant
         self._draw()
 
