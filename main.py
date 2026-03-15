@@ -30,8 +30,10 @@ def main() -> None:
 
     # Aplicar paleta de color antes de crear cualquier widget
     import settings as cfg_mod
+    import i18n as _i18n
     from ui_theme import apply_palette
     _cfg = cfg_mod.load()
+    _i18n.set_language(_cfg.get("language", "es"))
     apply_palette(_cfg.get("theme", "dark"))
     from ui_theme import apply_fonts
     apply_fonts(int(_cfg.get("font_size", 10)))

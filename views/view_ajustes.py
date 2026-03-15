@@ -13,6 +13,8 @@ _SONIDOS_DIR = Path(__file__).parent.parent / "media" / "sonidos"
 import settings as cfg_mod
 from ui_theme import C, FONTS, HButton, HSlider, apply_theme
 from modules.ptt.ptt_manager import PTTManager
+import i18n as _i18n
+from i18n import t
 
 
 class ViewAjustes(tk.Frame):
@@ -41,13 +43,13 @@ class ViewAjustes(tk.Frame):
         # Nav items
         self._nav_btns: dict[str, tk.Label] = {}
         sections = [
-            ("GENERAL",       [("general", "🔧  General")]),
-            ("MOTOR DE VOZ",  [("tts",     "🗣️  Motor TTS")]),
-            ("TRANSMISIÓN",   [("ptt",     "📡  Control PTT"),
-                               ("audio",   "🔊  Dispositivos Audio"),
-                               ("pauses",  "⏸  Tiempos y Pausas")]),
-            ("DATOS",         [("db",      "🗄️  Base de Datos"),
-                               ("logs",    "📋  Logs del Sistema")]),
+            (t("nav.general"),      [("general", t("nav.item.general"))]),
+            (t("nav.tts"),          [("tts",     t("nav.item.tts"))]),
+            (t("nav.transmission"), [("ptt",     t("nav.item.ptt")),
+                                     ("audio",   t("nav.item.audio")),
+                                     ("pauses",  t("nav.item.pauses"))]),
+            (t("nav.data"),         [("db",      t("nav.item.db")),
+                                     ("logs",    t("nav.item.logs"))]),
         ]
         for section_lbl, items in sections:
             tk.Label(sidebar, text=section_lbl, font=FONTS["badge"],
@@ -166,70 +168,63 @@ class ViewAjustes(tk.Frame):
     def _build_general_panel(self) -> None:
         p = self._panels["general"]
         inner = self._scrollable(p)
-        self._ph(inner, "General", "Preferencias generales de la aplicación")
-        body = self._card(inner, "Apariencia", "🎨")
+        self._ph(inner, t("general.title"), t("general.subtitle"))
+        body = self._card(inner, t("general.appearance"), "🎨")
 
-        self._lbl(body, "TAMAÑO DE LETRA")
-        self._font_size_combo = self._combo_row(
-            body, "font_size",
-            ["8 — Muy pequeño", "9 — Pequeño", "10 — Normal",
-             "11 — Grande", "12 — Muy grande"])
-        # Map display values to int
-        self._FONT_SIZE_MAP = {
-            "8 — Muy pequeño": 8, "9 — Pequeño": 9,
-            "10 — Normal": 10,    "11 — Grande": 11,
-            "12 — Muy grande": 12,
-        }
-        self._FONT_SIZE_RMAP = {v: k for k, v in self._FONT_SIZE_MAP.items()}
-        # Set current value
+        self._lbl(body, t("general.font_size"))
+        _fs_entries = [
+            (8,  "general.font_xs"), (9,  "general.font_sm"),
+            (10, "general.font_md"), (11, "general.font_lg"),
+            (12, "general.font_xl"),
+        ]
+        self._FONT_SIZE_MAP  = {t(k): v for v, k in _fs_entries}
+        self._FONT_SIZE_RMAP = {v: t(k) for v, k in _fs_entries}
+        font_size_labels = [t(k) for _, k in _fs_entries]
+        self._font_size_combo = self._combo_row(body, "font_size", font_size_labels)
         cur_size = int(self.cfg.get("font_size", 10))
-        cur_label = self._FONT_SIZE_RMAP.get(cur_size, "10 — Normal")
-        self._font_size_combo.set(cur_label)
+        self._font_size_combo.set(self._FONT_SIZE_RMAP.get(cur_size, t("general.font_md")))
 
-        self._lbl(body, "TEMA")
+        self._lbl(body, t("general.theme"))
         self._theme_combo = self._combo_row(body, "theme", ["dark", "light"])
 
-        # Nota de reinicio para el tema
         self._theme_note = tk.Label(body,
-            text="⚠  Reinicia la aplicación para aplicar el nuevo tema.",
+            text=t("general.theme_restart"),
             font=FONTS["small"], bg=C["surface"], fg=C["warning_h"])
 
-        self._lbl(body, "IDIOMA")
+        self._lbl(body, t("general.language"))
         self._language_combo = self._combo_row(body, "language", ["es", "en"])
-        tk.Label(body,
-            text="ℹ  El soporte de idioma adicional estará disponible próximamente.",
-            font=FONTS["small"], bg=C["surface"], fg=C["text3"]).pack(anchor="w", pady=(0, 8))
 
         self._start_minimized_var = tk.BooleanVar(
             value=self.cfg.get("start_minimized", False))
         tk.Checkbutton(body,
-            text="Iniciar minimizado en bandeja del sistema",
+            text=t("general.start_minimized"),
             variable=self._start_minimized_var,
             font=FONTS["body"], bg=C["surface"], fg=C["text"],
             selectcolor=C["surface2"],
-            activebackground=C["surface"]).pack(anchor="w")
+            activebackground=C["surface"]).pack(anchor="w", pady=(8, 0))
 
         self._confirm_close_var = tk.BooleanVar(
             value=self.cfg.get("confirm_close", True))
         tk.Checkbutton(body,
-            text="Confirmar al cerrar con transmisión activa",
+            text=t("general.confirm_close"),
             variable=self._confirm_close_var,
             font=FONTS["body"], bg=C["surface"], fg=C["text"],
             selectcolor=C["surface2"],
             activebackground=C["surface"]).pack(anchor="w", pady=(4, 0))
 
-        HButton(body, "Guardar", command=self._save_general,
+        HButton(body, t("general.save"), command=self._save_general,
                 variant="success").pack(anchor="w", pady=(10, 0))
 
     def _save_general(self) -> None:
         old_theme = self.cfg.get("theme", "dark")
         old_size  = int(self.cfg.get("font_size", 10))
+        old_lang  = self.cfg.get("language", "es")
 
         self.cfg["theme"]           = self._theme_combo.get()
-        self.cfg["language"]        = self._language_combo.get()
+        new_lang = self._language_combo.get()
+        self.cfg["language"]        = new_lang
         self.cfg["start_minimized"] = bool(self._start_minimized_var.get())
         self.cfg["confirm_close"]   = bool(self._confirm_close_var.get())
-        # font size: map label back to int
         size_label = self._font_size_combo.get()
         self.cfg["font_size"] = self._FONT_SIZE_MAP.get(size_label, 10)
 
@@ -237,15 +232,26 @@ class ViewAjustes(tk.Frame):
         if callable(self.on_cfg_saved):
             self.on_cfg_saved(self.cfg)
 
+        # Language changed → apply immediately and rebuild the view
+        if new_lang != old_lang:
+            _i18n.set_language(new_lang)
+            self._rebuild()
+            return
+
         needs_restart = (self.cfg["theme"] != old_theme or
                          self.cfg["font_size"] != old_size)
         if needs_restart:
             self._theme_note.pack(anchor="w", pady=(0, 6))
-            messagebox.showinfo("Reinicio necesario",
-                "El tema y/o tamaño de letra se aplicarán la próxima vez "
-                "que inicies HAMNA Desktop.")
+            messagebox.showinfo(t("general.restart_title"), t("general.restart_msg"))
         else:
-            messagebox.showinfo("Guardado", "Configuración general guardada.")
+            messagebox.showinfo(t("general.saved_title"), t("general.saved_msg"))
+
+    def _rebuild(self) -> None:
+        """Destroy all child widgets and rebuild the view (e.g. after language change)."""
+        for w in self.winfo_children():
+            w.destroy()
+        self._build()
+        self._show_panel("general")
 
     # ══════════════════════════════════════════════════════════════════════════
     # PANEL TTS
@@ -253,13 +259,12 @@ class ViewAjustes(tk.Frame):
     def _build_tts_panel(self) -> None:
         p = self._panels["tts"]
         inner = self._scrollable(p)
-        self._ph(inner, "Motor TTS",
-                 "Configuración de síntesis de voz para secciones TTS")
+        self._ph(inner, t("tts.title"), t("tts.subtitle"))
 
         body = self._card(inner, "Text to Speech Engine", "🗣️")
 
         # Selector de motor
-        self._lbl(body, "MOTOR")
+        self._lbl(body, t("tts.engine"))
         engine_row = tk.Frame(body, bg=C["surface"])
         engine_row.pack(fill=tk.X, pady=(0, 12))
         self._tts_engine_var = tk.StringVar(
@@ -278,13 +283,13 @@ class ViewAjustes(tk.Frame):
         self._pyttsx3_frame = tk.Frame(body, bg=C["surface"])
         self._pyttsx3_frame.pack(fill=tk.X)
 
-        self._lbl(self._pyttsx3_frame, "VELOCIDAD (palabras/min)")
+        self._lbl(self._pyttsx3_frame, t("tts.rate"))
         self._py_rate = self._slider(self._pyttsx3_frame, "tts_rate", 80, 300)
 
-        self._lbl(self._pyttsx3_frame, "VOLUMEN (%)")
+        self._lbl(self._pyttsx3_frame, t("tts.volume"))
         self._py_vol = self._slider(self._pyttsx3_frame, "tts_volume", 0, 100)
 
-        self._lbl(self._pyttsx3_frame, "TONO")
+        self._lbl(self._pyttsx3_frame, t("tts.pitch"))
         self._py_pitch = self._slider(self._pyttsx3_frame, "tts_pitch", -10, 10)
 
         # Azure frame
@@ -294,8 +299,7 @@ class ViewAjustes(tk.Frame):
                         padx=12, pady=8)
         info.pack(fill=tk.X, pady=(0, 10))
         tk.Label(info,
-                 text="ℹ️  Azure Cognitive Services requiere conexión a internet "
-                      "y suscripción de Azure.",
+                 text=t("tts.azure_info"),
                  font=FONTS["small"], bg=C["tts_bg"],
                  fg=C["tts_fg"], wraplength=420,
                  justify="left").pack(anchor="w")
@@ -307,14 +311,14 @@ class ViewAjustes(tk.Frame):
 
         lf = tk.Frame(row1, bg=C["surface"])
         lf.grid(row=0, column=0, sticky="ew", padx=(0, 8))
-        self._lbl(lf, "SUBSCRIPTION KEY *")
+        self._lbl(lf, "SUBSCRIPTION KEY *")  # technical, keep as-is
         self._az_key = ttk.Entry(lf, show="*")
         self._az_key.insert(0, self.cfg.get("azure_key", ""))
         self._az_key.pack(fill=tk.X)
 
         rf = tk.Frame(row1, bg=C["surface"])
         rf.grid(row=0, column=1, sticky="ew")
-        self._lbl(rf, "REGIÓN *")
+        self._lbl(rf, t("tts.region"))
         regions = ["eastus", "eastus2", "westus2", "northeurope",
                    "westeurope", "mexicocentral", "southeastasia"]
         self._az_region = ttk.Combobox(rf, values=regions)
@@ -329,7 +333,7 @@ class ViewAjustes(tk.Frame):
 
         lf2 = tk.Frame(row2, bg=C["surface"])
         lf2.grid(row=0, column=0, sticky="ew", padx=(0, 8))
-        self._lbl(lf2, "IDIOMA")
+        self._lbl(lf2, t("tts.language"))
         langs = ["es-MX", "es-ES", "es-AR", "es-CO",
                  "en-US", "en-GB", "pt-BR", "fr-FR"]
         self._az_lang = ttk.Combobox(lf2, values=langs, state="readonly")
@@ -340,7 +344,7 @@ class ViewAjustes(tk.Frame):
 
         rf2 = tk.Frame(row2, bg=C["surface"])
         rf2.grid(row=0, column=1, sticky="ew")
-        self._lbl(rf2, "VOZ NEURONAL")
+        self._lbl(rf2, t("tts.neural_voice"))
         self._az_voice = ttk.Combobox(rf2,
             values=["es-MX-DaliaNeural", "es-MX-JorgeNeural",
                     "es-MX-CarlotaNeural"],
@@ -356,7 +360,7 @@ class ViewAjustes(tk.Frame):
 
         lf3 = tk.Frame(row3, bg=C["surface"])
         lf3.grid(row=0, column=0, sticky="ew", padx=(0, 8))
-        self._lbl(lf3, "ESTILO")
+        self._lbl(lf3, t("tts.style"))
         self._az_style = ttk.Combobox(lf3, state="readonly",
             values=["general", "newscast", "cheerful",
                     "empathetic", "calm", "customerservice"])
@@ -365,7 +369,7 @@ class ViewAjustes(tk.Frame):
 
         rf3 = tk.Frame(row3, bg=C["surface"])
         rf3.grid(row=0, column=1, sticky="ew")
-        self._lbl(rf3, "FORMATO DE AUDIO")
+        self._lbl(rf3, t("tts.audio_format"))
         self._az_format = ttk.Combobox(rf3, state="readonly",
             values=["audio-16khz-128kbitrate-mono-mp3",
                     "audio-24khz-160kbitrate-mono-mp3",
@@ -382,20 +386,17 @@ class ViewAjustes(tk.Frame):
 
         lf4 = tk.Frame(az_sliders, bg=C["surface"])
         lf4.grid(row=0, column=0, sticky="ew", padx=(0, 8))
-        self._lbl(lf4, "VELOCIDAD (%)")
+        self._lbl(lf4, t("tts.speed_pct"))
         self._az_rate = self._slider(lf4, "azure_rate", 50, 200)
 
         rf4 = tk.Frame(az_sliders, bg=C["surface"])
         rf4.grid(row=0, column=1, sticky="ew")
-        self._lbl(rf4, "TONO (Hz)")
+        self._lbl(rf4, t("tts.pitch_hz"))
         self._az_pitch = self._slider(rf4, "azure_pitch", -20, 20)
-
-        self._az_status = self._status_badge(
-            self._azure_frame, "Sin verificar", C["warning"])
 
         # Estado
         self._az_status = tk.Label(self._azure_frame,
-            text="●  Sin verificar",
+            text=t("tts.unverified"),
             font=FONTS["small"], bg=C["surface"],
             fg=C["warning"])
         self._az_status.pack(anchor="w", pady=(8, 0))
@@ -403,13 +404,13 @@ class ViewAjustes(tk.Frame):
         # Botones
         btn_row = tk.Frame(body, bg=C["surface"])
         btn_row.pack(fill=tk.X, pady=(12, 0))
-        HButton(btn_row, "▶ Probar voz",
+        HButton(btn_row, t("tts.test_voice"),
                 command=self._test_tts,
                 variant="ghost").pack(side=tk.LEFT)
-        self._btn_az_test = HButton(btn_row, "☁️ Test Azure",
+        self._btn_az_test = HButton(btn_row, t("tts.test_azure"),
                 command=self._test_azure,
                 variant="ghost")
-        HButton(btn_row, "Guardar",
+        HButton(btn_row, t("tts.save"),
                 command=self._save_tts,
                 variant="success").pack(side=tk.RIGHT)
 
@@ -442,10 +443,10 @@ class ViewAjustes(tk.Frame):
             self._az_voice.current(0)
 
     def _test_tts(self) -> None:
-        messagebox.showinfo("TTS", "Prueba de voz iniciada (ver consola).")
+        messagebox.showinfo("TTS", t("tts.test_msg"))
 
     def _test_azure(self) -> None:
-        self._az_status.config(text="●  Verificando...", fg=C["warning"])
+        self._az_status.config(text=t("tts.verifying"), fg=C["warning"])
         key    = self._az_key.get().strip()
         region = self._az_region.get().strip()
         def run():
@@ -453,7 +454,7 @@ class ViewAjustes(tk.Frame):
                 import azure.cognitiveservices.speech as sdk
                 cfg = sdk.SpeechConfig(subscription=key, region=region)
                 self.after(0, lambda: self._az_status.config(
-                    text="●  Conectado", fg=C["success"]))
+                    text=t("tts.az_connected"), fg=C["success"]))
             except Exception as e:
                 self.after(0, lambda: self._az_status.config(
                     text=f"●  Error: {e}", fg=C["danger"]))
@@ -476,7 +477,7 @@ class ViewAjustes(tk.Frame):
         cfg_mod.save(self.cfg)
         if callable(self.on_cfg_saved):
             self.on_cfg_saved(self.cfg)
-        messagebox.showinfo("Guardado", "Configuración TTS guardada.")
+        messagebox.showinfo(t("tts.saved_title"), t("tts.saved_msg"))
 
     # ══════════════════════════════════════════════════════════════════════════
     # PANEL PTT
@@ -484,8 +485,7 @@ class ViewAjustes(tk.Frame):
     def _build_ptt_panel(self) -> None:
         p = self._panels["ptt"]
         inner = self._scrollable(p)
-        self._ph(inner, "Control PTT",
-                 "Método de activación Push-To-Talk para la transmisión")
+        self._ph(inner, t("ptt.title"), t("ptt.subtitle"))
 
         # Banner método activo
         self._ptt_banner = tk.Frame(inner, bg=C["audio_bg"],
@@ -494,14 +494,14 @@ class ViewAjustes(tk.Frame):
         tk.Label(self._ptt_banner, text="●",
                  font=("Segoe UI", 10),
                  bg=C["audio_bg"], fg=C["success"]).pack(side=tk.LEFT)
-        tk.Label(self._ptt_banner, text="Método activo:",
+        tk.Label(self._ptt_banner, text=t("ptt.active_method"),
                  font=FONTS["small"],
                  bg=C["audio_bg"], fg=C["success"]).pack(
             side=tk.LEFT, padx=(4, 8))
-        self._lbl_active_method = tk.Label(self._ptt_banner, text="Serial RS-232",
+        self._lbl_active_method = tk.Label(self._ptt_banner, text=t("ptt.serial_name"),
             font=FONTS["h3"], bg=C["audio_bg"], fg=C["text"])
         self._lbl_active_method.pack(side=tk.LEFT)
-        self._lbl_active_status = tk.Label(self._ptt_banner, text="No conectado",
+        self._lbl_active_status = tk.Label(self._ptt_banner, text=t("ptt.not_connected"),
             font=FONTS["small"], bg=C["audio_bg"], fg=C["text2"])
         self._lbl_active_status.pack(side=tk.RIGHT)
 
@@ -511,9 +511,9 @@ class ViewAjustes(tk.Frame):
         self._ptt_method_var = tk.StringVar(
             value=self.cfg.get("ptt_method", "serial"))
         self._ptt_tab_btns: dict[str, tk.Label] = {}
-        for val, lbl in [("serial", "🔌 Serial RS-232"),
-                         ("ami",    "☎️ AMI (Asterisk)"),
-                         ("api",    "🌐 API HTTP")]:
+        for val, lbl in [("serial", t("ptt.tab_serial")),
+                         ("ami",    t("ptt.tab_ami")),
+                         ("api",    t("ptt.tab_api"))]:
             b = tk.Label(tab_row, text=lbl, font=FONTS["body"],
                          bg=C["surface2"], fg=C["text2"],
                          padx=16, pady=8, cursor="hand2")
@@ -543,20 +543,34 @@ class ViewAjustes(tk.Frame):
         for k, b in self._ptt_tab_btns.items():
             b.config(bg=C["accent"] if k == method else C["surface2"],
                      fg=C["text"] if k == method else C["text2"])
-        names = {"serial": "Serial RS-232",
-                 "ami":    "AMI (Asterisk)",
-                 "api":    "API HTTP"}
+        names = {"serial": t("ptt.serial_name"),
+                 "ami":    t("ptt.ami_name"),
+                 "api":    t("ptt.api_name")}
         self._lbl_active_method.config(text=names.get(method, method))
         self.ptt.reload_cfg(self.cfg)
+        # Refresh banner status when tab changes
+        connected = self.ptt.is_connected()
+        self._lbl_active_status.config(
+            text=t("ptt.connected") if connected else t("ptt.not_connected"),
+            fg=C["success"] if connected else C["text2"])
+
+    def _update_banner_status(self, method: str, status: str, msg: str) -> None:
+        """Update the top banner status only if *method* is the active one."""
+        if self.cfg.get("ptt_method") != method:
+            return
+        color = (C["success"] if status == "connected"
+                 else C["danger"] if status == "error" else C["text2"])
+        short = t("ptt.connected") if status == "connected" else f"●  {msg[:40]}"
+        self._lbl_active_status.config(text=short, fg=color)
 
     # ── Serial ────────────────────────────────────────────────────────────────
     def _build_serial_panel(self, parent: tk.Frame,
                              inner: tk.Frame) -> None:
-        body = self._card(parent, "Serial RS-232 / USB-UART", "🔌")
+        body = self._card(parent, t("serial.title"), "🔌")
         parent.pack(fill=tk.X, padx=18, pady=(0, 12))
 
         # Puerto + Refresh
-        self._lbl(body, "PUERTO")
+        self._lbl(body, t("serial.port"))
         port_row = tk.Frame(body, bg=C["surface"])
         port_row.pack(fill=tk.X, pady=(0, 8))
         from modules.ptt.ptt_serial import PTTSerial
@@ -564,18 +578,18 @@ class ViewAjustes(tk.Frame):
         self._ser_port = ttk.Combobox(port_row, values=ports)
         self._ser_port.set(self.cfg.get("serial_port", "COM1"))
         self._ser_port.pack(side=tk.LEFT, fill=tk.X, expand=True)
-        HButton(port_row, "↺ Refresh",
+        HButton(port_row, t("serial.refresh"),
                 command=self._refresh_ports,
                 variant="ghost").pack(side=tk.LEFT, padx=(6, 0))
 
-        self._lbl(body, "BAUDRATE")
+        self._lbl(body, t("serial.baudrate"))
         bauds = ["1200","2400","4800","9600","19200",
                  "38400","57600","115200"]
         self._ser_baud = ttk.Combobox(body, values=bauds, state="readonly")
         self._ser_baud.set(str(self.cfg.get("serial_baud", 9600)))
         self._ser_baud.pack(fill=tk.X, pady=(0, 8))
 
-        self._lbl(body, "PIN PTT")
+        self._lbl(body, t("serial.pin"))
         self._ser_pin = ttk.Combobox(body,
             values=["RTS", "DTR"], state="readonly")
         self._ser_pin.set(self.cfg.get("serial_pin", "RTS"))
@@ -610,10 +624,10 @@ class ViewAjustes(tk.Frame):
 
         btn_row = tk.Frame(body, bg=C["surface"])
         btn_row.pack(fill=tk.X)
-        self._btn_ser_conn = HButton(btn_row, "Connect",
+        self._btn_ser_conn = HButton(btn_row, t("serial.connect"),
             command=self._connect_serial, variant="success")
         self._btn_ser_conn.pack(side=tk.LEFT)
-        self._btn_ser_ptt = HButton(btn_row, "PTT ON",
+        self._btn_ser_ptt = HButton(btn_row, t("serial.ptt_on"),
             command=self._toggle_serial_ptt, variant="on_air")
         self._btn_ser_ptt.pack(side=tk.LEFT, padx=(8, 0))
         self._btn_ser_ptt.config(state="disabled")
@@ -627,8 +641,8 @@ class ViewAjustes(tk.Frame):
             value=self.cfg.get("serial_invert_ptt", False))
         self._inv_cos_var = tk.BooleanVar(
             value=self.cfg.get("serial_invert_cos", False))
-        for text, var in [("Invert PTT", self._inv_ptt_var),
-                          ("Invert COS", self._inv_cos_var)]:
+        for text, var in [(t("serial.invert_ptt"), self._inv_ptt_var),
+                          (t("serial.invert_cos"), self._inv_cos_var)]:
             tk.Checkbutton(check_row, text=text, variable=var,
                            font=FONTS["body"],
                            bg=C["surface"], fg=C["text"],
@@ -636,7 +650,7 @@ class ViewAjustes(tk.Frame):
                            activebackground=C["surface"]).pack(
                 side=tk.LEFT, padx=(0, 16))
 
-        HButton(body, "Guardar Serial",
+        HButton(body, t("serial.save"),
                 command=self._save_serial,
                 variant="success").pack(anchor="w", pady=(10, 0))
 
@@ -647,6 +661,7 @@ class ViewAjustes(tk.Frame):
                      else C["text3"])
             self.after(0, lambda: self._ser_status.config(
                 text=f"●  {msg}", fg=color))
+            self.after(0, lambda: self._update_banner_status("serial", status, msg))
         self.ptt.on_serial_status = _ser_status_cb
 
     def _refresh_ports(self) -> None:
@@ -657,7 +672,7 @@ class ViewAjustes(tk.Frame):
     def _connect_serial(self) -> None:
         if self.ptt.serial.is_connected():
             self.ptt.serial.disconnect()
-            self._btn_ser_conn.config(text="Connect")
+            self._btn_ser_conn.config(text=t("serial.connect"))
             self._btn_ser_conn.set_variant("success")
             self._btn_ser_ptt.config(state="disabled")
         else:
@@ -669,21 +684,21 @@ class ViewAjustes(tk.Frame):
                 invert_ptt=self.cfg.get("serial_invert_ptt", False),
             )
             if ok:
-                self._btn_ser_conn.config(text="Disconnect")
+                self._btn_ser_conn.config(text=t("serial.disconnect"))
                 self._btn_ser_conn.set_variant("danger")
                 self._btn_ser_ptt.config(state="normal")
             else:
-                messagebox.showerror("Error de conexión", msg)
+                messagebox.showerror(t("serial.conn_error"), msg)
 
     def _toggle_serial_ptt(self) -> None:
         if self.ptt.serial.is_ptt_on():
             self.ptt.serial.ptt_off()
-            self._btn_ser_ptt.config(text="PTT ON")
+            self._btn_ser_ptt.config(text=t("serial.ptt_on"))
             self._btn_ser_ptt.set_variant("on_air")
             self._ptt_var.set("OFF")
         else:
             self.ptt.serial.ptt_on()
-            self._btn_ser_ptt.config(text="PTT OFF")
+            self._btn_ser_ptt.config(text=t("serial.ptt_off"))
             self._btn_ser_ptt.set_variant("ghost")
             self._ptt_var.set("ON")
 
@@ -698,7 +713,7 @@ class ViewAjustes(tk.Frame):
     # ── AMI ───────────────────────────────────────────────────────────────────
     def _build_ami_panel(self, parent: tk.Frame,
                           inner: tk.Frame) -> None:
-        body = self._card(parent, "AMI Settings — Asterisk Manager Interface", "☎️")
+        body = self._card(parent, t("ami.title"), "☎️")
         parent.pack(fill=tk.X, padx=18, pady=(0, 12))
 
         row = tk.Frame(body, bg=C["surface"])
@@ -708,14 +723,14 @@ class ViewAjustes(tk.Frame):
 
         lf = tk.Frame(row, bg=C["surface"])
         lf.grid(row=0, column=0, sticky="ew", padx=(0, 8))
-        self._lbl(lf, "HOST")
+        self._lbl(lf, t("ami.host"))
         self._ami_host = ttk.Entry(lf)
         self._ami_host.insert(0, self.cfg.get("ami_host", "127.0.0.1"))
         self._ami_host.pack(fill=tk.X)
 
         rf = tk.Frame(row, bg=C["surface"])
         rf.grid(row=0, column=1, sticky="ew")
-        self._lbl(rf, "PORT")
+        self._lbl(rf, t("ami.port"))
         self._ami_port = ttk.Entry(rf)
         self._ami_port.insert(0, str(self.cfg.get("ami_port", 5038)))
         self._ami_port.pack(fill=tk.X)
@@ -727,14 +742,14 @@ class ViewAjustes(tk.Frame):
 
         lf2 = tk.Frame(row2, bg=C["surface"])
         lf2.grid(row=0, column=0, sticky="ew", padx=(0, 8))
-        self._lbl(lf2, "USERNAME")
+        self._lbl(lf2, t("ami.username"))
         self._ami_user = ttk.Entry(lf2)
         self._ami_user.insert(0, self.cfg.get("ami_user", "admin"))
         self._ami_user.pack(fill=tk.X)
 
         rf2 = tk.Frame(row2, bg=C["surface"])
         rf2.grid(row=0, column=1, sticky="ew")
-        self._lbl(rf2, "CONTRASEÑA")
+        self._lbl(rf2, t("ami.password"))
         self._ami_pass = ttk.Entry(rf2, show="*")
         self._ami_pass.insert(0, self.cfg.get("ami_password", ""))
         self._ami_pass.pack(fill=tk.X)
@@ -746,14 +761,14 @@ class ViewAjustes(tk.Frame):
 
         lf3 = tk.Frame(row3, bg=C["surface"])
         lf3.grid(row=0, column=0, sticky="ew", padx=(0, 8))
-        self._lbl(lf3, "CANAL ORIGINATE")
+        self._lbl(lf3, t("ami.channel"))
         self._ami_channel = ttk.Entry(lf3)
         self._ami_channel.insert(0, self.cfg.get("ami_channel", "SIP/radio"))
         self._ami_channel.pack(fill=tk.X)
 
         rf3 = tk.Frame(row3, bg=C["surface"])
         rf3.grid(row=0, column=1, sticky="ew")
-        self._lbl(rf3, "CONTEXTO")
+        self._lbl(rf3, t("ami.context"))
         self._ami_context = ttk.Entry(rf3)
         self._ami_context.insert(0, self.cfg.get("ami_context", "ptt-control"))
         self._ami_context.pack(fill=tk.X)
@@ -765,9 +780,9 @@ class ViewAjustes(tk.Frame):
 
         btn_row = tk.Frame(body, bg=C["surface"])
         btn_row.pack(fill=tk.X)
-        HButton(btn_row, "Test Connection",
+        HButton(btn_row, t("ami.test"),
                 command=self._test_ami, variant="ghost").pack(side=tk.LEFT)
-        HButton(btn_row, "Save",
+        HButton(btn_row, t("ami.save"),
                 command=self._save_ami, variant="success").pack(
             side=tk.LEFT, padx=(6, 0))
 
@@ -776,11 +791,12 @@ class ViewAjustes(tk.Frame):
                      else C["danger"] if status == "error" else C["text3"])
             self.after(0, lambda: self._ami_status.config(
                 text=f"●  {msg}", fg=color))
+            self.after(0, lambda: self._update_banner_status("ami", status, msg))
         self.ptt.on_ami_status = _ami_cb
 
     def _test_ami(self) -> None:
         self._save_ami()
-        self._ami_status.config(text="●  Probando...", fg=C["warning"])
+        self._ami_status.config(text=t("ami.testing"), fg=C["warning"])
         def run():
             ok, msg = self.ptt.ami.connect(
                 host=self.cfg.get("ami_host", "127.0.0.1"),
@@ -805,10 +821,10 @@ class ViewAjustes(tk.Frame):
     # ── API ───────────────────────────────────────────────────────────────────
     def _build_api_panel(self, parent: tk.Frame,
                           inner: tk.Frame) -> None:
-        body = self._card(parent, "API Settings — HTTP REST", "🌐")
+        body = self._card(parent, t("api.title"), "🌐")
         parent.pack(fill=tk.X, padx=18, pady=(0, 12))
 
-        self._lbl(body, "URL BASE")
+        self._lbl(body, t("api.base_url"))
         self._api_url = ttk.Entry(body)
         self._api_url.insert(0, self.cfg.get("api_url",
                                                "http://192.168.1.37"))
@@ -821,14 +837,14 @@ class ViewAjustes(tk.Frame):
 
         lf = tk.Frame(row, bg=C["surface"])
         lf.grid(row=0, column=0, sticky="ew", padx=(0, 8))
-        self._lbl(lf, "RUTA PTT ON")
+        self._lbl(lf, t("api.route_on"))
         self._api_on = ttk.Entry(lf)
         self._api_on.insert(0, self.cfg.get("api_ptt_on", "/ptt_on"))
         self._api_on.pack(fill=tk.X)
 
         rf = tk.Frame(row, bg=C["surface"])
         rf.grid(row=0, column=1, sticky="ew")
-        self._lbl(rf, "RUTA PTT OFF")
+        self._lbl(rf, t("api.route_off"))
         self._api_off = ttk.Entry(rf)
         self._api_off.insert(0, self.cfg.get("api_ptt_off", "/ptt_off"))
         self._api_off.pack(fill=tk.X)
@@ -840,14 +856,14 @@ class ViewAjustes(tk.Frame):
 
         lf2 = tk.Frame(row2, bg=C["surface"])
         lf2.grid(row=0, column=0, sticky="ew", padx=(0, 8))
-        self._lbl(lf2, "API KEY (opcional)")
+        self._lbl(lf2, t("api.key"))
         self._api_key = ttk.Entry(lf2, show="*")
         self._api_key.insert(0, self.cfg.get("api_key", ""))
         self._api_key.pack(fill=tk.X)
 
         rf2 = tk.Frame(row2, bg=C["surface"])
         rf2.grid(row=0, column=1, sticky="ew")
-        self._lbl(rf2, "MÉTODO HTTP")
+        self._lbl(rf2, t("api.method"))
         self._api_method = ttk.Combobox(rf2,
             values=["GET", "POST", "PUT"], state="readonly")
         self._api_method.set(self.cfg.get("api_method", "GET"))
@@ -876,9 +892,9 @@ class ViewAjustes(tk.Frame):
 
         btn_row = tk.Frame(body, bg=C["surface"])
         btn_row.pack(fill=tk.X)
-        HButton(btn_row, "Probar Conexión",
+        HButton(btn_row, t("api.test"),
                 command=self._test_api, variant="ghost").pack(side=tk.LEFT)
-        HButton(btn_row, "Guardar",
+        HButton(btn_row, t("api.save"),
                 command=self._save_api, variant="success").pack(
             side=tk.LEFT, padx=(6, 0))
         HButton(btn_row, "PTT ON",
@@ -893,6 +909,7 @@ class ViewAjustes(tk.Frame):
                      else C["danger"] if status == "error" else C["text3"])
             self.after(0, lambda: self._api_status.config(
                 text=f"●  {msg}", fg=color))
+            self.after(0, lambda: self._update_banner_status("api", status, msg))
         self.ptt.on_api_status = _api_cb
 
     def _update_api_preview(self, event=None) -> None:
@@ -904,7 +921,7 @@ class ViewAjustes(tk.Frame):
 
     def _test_api(self) -> None:
         self._save_api()
-        self._api_status.config(text="●  Probando...", fg=C["warning"])
+        self._api_status.config(text=t("api.testing"), fg=C["warning"])
         def run():
             ok, msg = self.ptt.api.test_connection(
                 base_url=self.cfg.get("api_url", ""),
@@ -931,11 +948,10 @@ class ViewAjustes(tk.Frame):
     def _build_audio_panel(self) -> None:
         p = self._panels["audio"]
         inner = self._scrollable(p)
-        self._ph(inner, "Dispositivos de Audio",
-                 "Entrada y salida de audio para reproducción de secciones")
-        body = self._card(inner, "Salida de Audio", "🔊")
-        self._lbl(body, "DISPOSITIVO DE SALIDA")
-        devices = ["Sistema por defecto"]
+        self._ph(inner, t("audio.title"), t("audio.subtitle"))
+        body = self._card(inner, t("audio.output"), "🔊")
+        self._lbl(body, t("audio.device"))
+        devices = [t("audio.default")]
         try:
             import pygame
             pygame.mixer.init()
@@ -946,12 +962,12 @@ class ViewAjustes(tk.Frame):
         self._audio_dev = ttk.Combobox(body, values=devices)
         self._audio_dev.set(self.cfg.get("audio_device") or devices[0])
         self._audio_dev.pack(fill=tk.X, pady=(0, 10))
-        self._lbl(body, "VOLUMEN MASTER (%)")
+        self._lbl(body, t("audio.master_vol"))
         self._audio_vol = self._slider(body, "audio_volume", 0, 100)
-        HButton(body, "▶ Probar audio",
+        HButton(body, t("audio.test"),
                 command=lambda: None, variant="ghost").pack(
             side=tk.LEFT, pady=(8, 0))
-        HButton(body, "Guardar",
+        HButton(body, t("audio.save"),
                 command=self._save_audio,
                 variant="success").pack(side=tk.LEFT, padx=(8, 0),
                                         pady=(8, 0))
@@ -960,7 +976,7 @@ class ViewAjustes(tk.Frame):
         self.cfg["audio_device"] = self._audio_dev.get()
         self.cfg["audio_volume"] = int(self._audio_vol.get())
         cfg_mod.save(self.cfg)
-        messagebox.showinfo("Guardado", "Configuración de audio guardada.")
+        messagebox.showinfo(t("audio.saved_title"), t("audio.saved_msg"))
 
     # ══════════════════════════════════════════════════════════════════════════
     # PANEL TIEMPOS Y PAUSAS
@@ -968,15 +984,14 @@ class ViewAjustes(tk.Frame):
     def _build_pauses_panel(self) -> None:
         p = self._panels["pauses"]
         inner = self._scrollable(p)
-        self._ph(inner, "Tiempos y Pausas",
-                 "Configura pausas automáticas durante la transmisión")
+        self._ph(inner, t("pauses.title"), t("pauses.subtitle"))
 
         # ── Activar ────────────────────────────────────────────────────────
-        body_en = self._card(inner, "Estado", "⏸")
+        body_en = self._card(inner, t("pauses.status"), "⏸")
         self._pause_enabled_var = tk.BooleanVar(
             value=self.cfg.get("pause_enabled", False))
         tk.Checkbutton(body_en,
-            text="Activar pausas automáticas durante la transmisión",
+            text=t("pauses.enable"),
             variable=self._pause_enabled_var,
             font=FONTS["body"], bg=C["surface"], fg=C["text"],
             selectcolor=C["surface2"],
@@ -985,8 +1000,7 @@ class ViewAjustes(tk.Frame):
         info = tk.Frame(body_en, bg=C["warning"], padx=10, pady=6)
         info.pack(fill=tk.X, pady=(10, 0))
         tk.Label(info,
-            text="⚠  Al activar, la transmisión pausará automáticamente "
-                 "cada cierto tiempo, reproduciendo los anuncios configurados.",
+            text=t("pauses.warning"),
             font=FONTS["small"], bg=C["warning"], fg="#fff",
             wraplength=460, justify="left").pack(anchor="w")
 
@@ -994,7 +1008,7 @@ class ViewAjustes(tk.Frame):
         self._pauses_body = tk.Frame(inner, bg=C["bg"])
         self._pauses_body.pack(fill=tk.X)
 
-        body_t = self._card(self._pauses_body, "Tiempos", "⏱")
+        body_t = self._card(self._pauses_body, t("pauses.times"), "⏱")
         body_t.columnconfigure(0, weight=1)
         body_t.columnconfigure(1, weight=1)
         body_t.columnconfigure(2, weight=1)
@@ -1006,9 +1020,9 @@ class ViewAjustes(tk.Frame):
         row.columnconfigure(2, weight=1)
 
         for col, (lbl, key, lo, hi) in enumerate([
-            ("TIEMPO DE TX ANTES DE PAUSA (seg)", "pause_tx_time",     10,  3600),
-            ("DURACIÓN DE PAUSA (seg)",            "pause_duration",     5,   600),
-            ("ALERTA ANTES DE PAUSA (seg)",        "pause_alert_before", 0,    60),
+            (t("pauses.tx_time"),     "pause_tx_time",     10, 3600),
+            (t("pauses.duration"),    "pause_duration",     5,  600),
+            (t("pauses.alert_before"),"pause_alert_before", 0,   60),
         ]):
 
             f = tk.Frame(row, bg=C["surface"])
@@ -1038,7 +1052,7 @@ class ViewAjustes(tk.Frame):
 
         f_ptt = tk.Frame(row3, bg=C["surface"])
         f_ptt.pack(side="left")
-        tk.Label(f_ptt, text="RETARDO PTT ON (seg)",
+        tk.Label(f_ptt, text=t("pauses.ptt_delay"),
                  font=FONTS["badge"], bg=C["surface"], fg=C["text3"]
                  ).pack(anchor="w", pady=(0, 4))
         sp_ptt = tk.Spinbox(f_ptt, from_=0, to=10, width=8,
@@ -1054,18 +1068,17 @@ class ViewAjustes(tk.Frame):
         self._pause_sp_ptt_on_delay = sp_ptt
 
         tk.Label(row3,
-                 text="Silencio entre PTT ON y el inicio del audio. "
-                      "Compensa la latencia del sistema de transmisión (0 = sin retardo).",
+                 text=t("pauses.ptt_hint"),
                  font=FONTS["small"], bg=C["surface"], fg=C["text3"],
                  wraplength=340, justify="left").pack(side="left", padx=(16, 0))
 
         # ── Archivos de audio ──────────────────────────────────────────────
-        body_a = self._card(self._pauses_body, "Archivos de Audio", "🔊")
+        body_a = self._card(self._pauses_body, t("pauses.audio_files"), "🔊")
 
         for lbl, key, icon in [
-            ("ALERTA DE PAUSA",       "pause_alert_file",        "🔔"),
-            ("ANUNCIO DE PAUSA",      "pause_announcement_file", "⏸"),
-            ("ANUNCIO DE CONTINUAMOS","pause_resume_file",       "▶"),
+            (t("pauses.alert_file"),  "pause_alert_file",        "🔔"),
+            (t("pauses.ann_file"),    "pause_announcement_file", "⏸"),
+            (t("pauses.resume_file"), "pause_resume_file",       "▶"),
         ]:
             tk.Label(body_a, text=f"{icon}  {lbl}",
                      font=FONTS["badge"], bg=C["surface"],
@@ -1079,7 +1092,7 @@ class ViewAjustes(tk.Frame):
             e = ttk.Entry(row_a, textvariable=path_var)
             e.grid(row=0, column=0, sticky="ew")
 
-            HButton(row_a, "Examinar",
+            HButton(row_a, t("pauses.browse"),
                     command=lambda pv=path_var: self._browse_pause_audio(pv),
                     variant="ghost").grid(row=0, column=1, padx=(6, 0))
             HButton(row_a, "✖",
@@ -1089,7 +1102,7 @@ class ViewAjustes(tk.Frame):
             setattr(self, f"_pause_path_{key}", path_var)
 
         # ── Guardar ────────────────────────────────────────────────────────
-        HButton(self._pauses_body, "Guardar configuración de pausas",
+        HButton(self._pauses_body, t("pauses.save"),
                 command=self._save_pauses,
                 variant="success").pack(anchor="w", padx=18, pady=(4, 12))
 
@@ -1106,7 +1119,7 @@ class ViewAjustes(tk.Frame):
 
     def _browse_pause_audio(self, path_var: tk.StringVar) -> None:
         path = filedialog.askopenfilename(
-            title="Seleccionar archivo de audio",
+            title=t("pauses.audio_dlg"),
             filetypes=[("Audio", "*.mp3 *.wav *.MP3 *.WAV"), ("Todos", "*.*")])
         if not path:
             return
@@ -1117,9 +1130,8 @@ class ViewAjustes(tk.Frame):
             shutil.copy2(path, dest)
             path_var.set(str(dest))
         except Exception as e:
-            messagebox.showwarning("Advertencia",
-                f"No se pudo copiar a media/sonidos/:\n{e}\n\n"
-                "Se usará la ruta original.")
+            messagebox.showwarning(t("pauses.warn_title"),
+                t("pauses.copy_warn").format(e=e))
             path_var.set(path)
 
     def _save_pauses(self) -> None:
@@ -1138,8 +1150,7 @@ class ViewAjustes(tk.Frame):
         cfg_mod.save(self.cfg)
         if callable(self.on_cfg_saved):
             self.on_cfg_saved(self.cfg)
-        messagebox.showinfo("Guardado",
-            "Configuración de tiempos y pausas guardada.")
+        messagebox.showinfo(t("pauses.saved_title"), t("pauses.saved_msg"))
 
     # ══════════════════════════════════════════════════════════════════════════
     # PANEL DB
@@ -1148,19 +1159,17 @@ class ViewAjustes(tk.Frame):
         from pathlib import Path
         p = self._panels["db"]
         inner = self._scrollable(p)
-        self._ph(inner, "Base de Datos",
-                 "Rutas de archivos y mantenimiento de hamna.db")
-        body = self._card(inner, "SQLite", "🗄️")
+        self._ph(inner, t("db.title"), t("db.subtitle"))
+        body = self._card(inner, t("db.sqlite"), "🗄️")
 
         import database
         db_path    = str(database.DB_PATH)
         media_path = str(Path(database.DB_PATH).parent / "media" / "audios")
 
         for lbl_text, val in [
-            ("RUTA BASE DE DATOS",   db_path),
-            ("CARPETA DE AUDIOS",    media_path),
-            ("TEMPORAL TTS",
-             str(Path(database.DB_PATH).parent / "output_temp.mp3")),
+            (t("db.path"),     db_path),
+            (t("db.audios"),   media_path),
+            (t("db.tts_temp"), str(Path(database.DB_PATH).parent / "output_temp.mp3")),
         ]:
             self._lbl(body, lbl_text)
             e = ttk.Entry(body)
@@ -1170,10 +1179,10 @@ class ViewAjustes(tk.Frame):
 
         btn_row = tk.Frame(body, bg=C["surface"])
         btn_row.pack(fill=tk.X, pady=(4, 0))
-        HButton(btn_row, "📂 Abrir carpeta",
+        HButton(btn_row, t("db.open_folder"),
                 command=lambda: self._open_folder(media_path),
                 variant="ghost").pack(side=tk.LEFT)
-        HButton(btn_row, "🗑 Limpiar DB",
+        HButton(btn_row, t("db.clear"),
                 command=self._clear_db,
                 variant="danger").pack(side=tk.LEFT, padx=(8, 0))
 
@@ -1186,14 +1195,11 @@ class ViewAjustes(tk.Frame):
             pass
 
     def _clear_db(self) -> None:
-        if messagebox.askyesno("Confirmar",
-                "¿Eliminar TODOS los datos de la base de datos?"):
+        if messagebox.askyesno(t("db.clear_title"), t("db.clear_confirm")):
             import database
             database.DB_PATH.unlink(missing_ok=True)
             database.init_db()
-            messagebox.showinfo("Limpiado",
-                "Base de datos reiniciada.\n"
-                "Reinicia la aplicación para ver los cambios.")
+            messagebox.showinfo(t("db.cleared_title"), t("db.cleared_msg"))
 
     # ══════════════════════════════════════════════════════════════════════════
     # PANEL LOGS
@@ -1201,9 +1207,8 @@ class ViewAjustes(tk.Frame):
     def _build_logs_panel(self) -> None:
         p = self._panels["logs"]
         inner = self._scrollable(p)
-        self._ph(inner, "Logs del Sistema",
-                 "Registro de eventos y transmisiones de HAMNA Desktop")
-        body = self._card(inner, "Log reciente", "📋")
+        self._ph(inner, t("logs.title"), t("logs.subtitle"))
+        body = self._card(inner, t("logs.recent"), "📋")
 
         self._log_text = tk.Text(body, height=14,
                                   bg=C["input_bg"], fg=C["success"],
@@ -1213,22 +1218,33 @@ class ViewAjustes(tk.Frame):
 
         btn_row = tk.Frame(body, bg=C["surface"])
         btn_row.pack(fill=tk.X, pady=(8, 0))
-        HButton(btn_row, "Limpiar log",
+        HButton(btn_row, t("logs.clear"),
                 command=self._clear_log,
                 variant="danger").pack(side=tk.LEFT)
-        HButton(btn_row, "↺ Actualizar",
+        HButton(btn_row, t("logs.refresh"),
                 command=self.refresh_logs,
                 variant="ghost").pack(side=tk.LEFT, padx=(6, 0))
         self.refresh_logs()
 
     def refresh_logs(self) -> None:
-        """Carga los últimos registros del log de Python."""
-        import logging
+        """Carga los últimos 200 líneas del archivo hamna.log."""
+        import os
+        from pathlib import Path
+        log_path = Path(__file__).parent.parent / "hamna.log"
         self._log_text.config(state="normal")
         self._log_text.delete("1.0", tk.END)
-        self._log_text.insert(tk.END,
-            "[Sistema] HAMNA Desktop iniciado\n"
-            "[Base de datos] hamna.db cargada\n")
+        if log_path.exists():
+            try:
+                with open(log_path, "r", encoding="utf-8", errors="replace") as f:
+                    lines = f.readlines()
+                # Show last 200 lines
+                tail = "".join(lines[-200:])
+                self._log_text.insert(tk.END, tail)
+            except Exception as e:
+                self._log_text.insert(tk.END, f"[Error leyendo log] {e}\n")
+        else:
+            self._log_text.insert(tk.END, t("logs.init"))
+        self._log_text.see(tk.END)
         self._log_text.config(state="disabled")
 
     def append_log(self, msg: str) -> None:
