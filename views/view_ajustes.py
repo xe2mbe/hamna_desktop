@@ -173,27 +173,58 @@ class ViewAjustes(tk.Frame):
         p = self._panels["general"]
         inner = self._scrollable(p)
         self._ph(inner, "General", "Preferencias generales de la aplicación")
-        body = self._card(inner, "Apariencia", "🔧")
+        body = self._card(inner, "Apariencia", "🎨")
+
         self._lbl(body, "TEMA")
-        self._combo_row(body, "theme", ["dark", "light"])
+        self._theme_combo = self._combo_row(body, "theme", ["dark", "light"])
+
+        # Nota de reinicio para el tema
+        self._theme_note = tk.Label(body,
+            text="⚠  Reinicia la aplicación para aplicar el nuevo tema.",
+            font=FONTS["small"], bg=C["surface"], fg=C["warning_h"])
+
         self._lbl(body, "IDIOMA")
-        self._combo_row(body, "language", ["es", "en"])
+        self._language_combo = self._combo_row(body, "language", ["es", "en"])
+        tk.Label(body,
+            text="ℹ  El soporte de idioma adicional estará disponible próximamente.",
+            font=FONTS["small"], bg=C["surface"], fg=C["text3"]).pack(anchor="w", pady=(0, 8))
+
+        self._start_minimized_var = tk.BooleanVar(
+            value=self.cfg.get("start_minimized", False))
         tk.Checkbutton(body,
             text="Iniciar minimizado en bandeja del sistema",
-            variable=tk.BooleanVar(value=self.cfg.get("start_minimized", False)),
-            bg=C["surface"], fg=C["text"], selectcolor=C["surface2"],
+            variable=self._start_minimized_var,
+            font=FONTS["body"], bg=C["surface"], fg=C["text"],
+            selectcolor=C["surface2"],
             activebackground=C["surface"]).pack(anchor="w")
+
+        self._confirm_close_var = tk.BooleanVar(
+            value=self.cfg.get("confirm_close", True))
         tk.Checkbutton(body,
             text="Confirmar al cerrar con transmisión activa",
-            variable=tk.BooleanVar(value=self.cfg.get("confirm_close", True)),
-            bg=C["surface"], fg=C["text"], selectcolor=C["surface2"],
+            variable=self._confirm_close_var,
+            font=FONTS["body"], bg=C["surface"], fg=C["text"],
+            selectcolor=C["surface2"],
             activebackground=C["surface"]).pack(anchor="w", pady=(4, 0))
+
         HButton(body, "Guardar", command=self._save_general,
                 variant="success").pack(anchor="w", pady=(10, 0))
 
     def _save_general(self) -> None:
+        old_theme = self.cfg.get("theme", "dark")
+        self.cfg["theme"]           = self._theme_combo.get()
+        self.cfg["language"]        = self._language_combo.get()
+        self.cfg["start_minimized"] = bool(self._start_minimized_var.get())
+        self.cfg["confirm_close"]   = bool(self._confirm_close_var.get())
         cfg_mod.save(self.cfg)
-        messagebox.showinfo("Guardado", "Configuración general guardada.")
+        if callable(self.on_cfg_saved):
+            self.on_cfg_saved(self.cfg)
+        if self.cfg["theme"] != old_theme:
+            self._theme_note.pack(anchor="w", pady=(0, 6))
+            messagebox.showinfo("Tema cambiado",
+                "El nuevo tema se aplicará la próxima vez que inicies HAMNA Desktop.")
+        else:
+            messagebox.showinfo("Guardado", "Configuración general guardada.")
 
     # ══════════════════════════════════════════════════════════════════════════
     # PANEL TTS

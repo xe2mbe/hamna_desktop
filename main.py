@@ -28,6 +28,12 @@ log = logging.getLogger("hamna")
 def main() -> None:
     log.info("HAMNA Desktop iniciando — Python %s", sys.version.split()[0])
 
+    # Aplicar paleta de color antes de crear cualquier widget
+    import settings as cfg_mod
+    from ui_theme import apply_palette
+    _cfg = cfg_mod.load()
+    apply_palette(_cfg.get("theme", "dark"))
+
     from main_window import MainWindow
     app = MainWindow()
     app.protocol("WM_DELETE_WINDOW", app.on_close)

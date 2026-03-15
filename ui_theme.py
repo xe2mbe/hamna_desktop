@@ -6,33 +6,70 @@ import tkinter as tk
 from tkinter import ttk
 from typing import Callable
 
-# ── Paleta ────────────────────────────────────────────────────────────────────
-C = {
-    "bg":           "#0d1117",
-    "surface":      "#161b22",
-    "surface2":     "#21262d",
-    "border":       "#30363d",
-    "accent":       "#1f6feb",
-    "accent_h":     "#388bfd",
-    "success":      "#238636",
-    "success_h":    "#2ea043",
-    "danger":       "#da3633",
-    "danger_h":     "#f85149",
-    "warning":      "#9e6a03",
-    "warning_h":    "#d29922",
-    "text":         "#e6edf3",
-    "text2":        "#8b949e",
-    "text3":        "#484f58",
-    "input_bg":     "#0d1117",
-    "header":       "#010409",
-    "on_air":       "#da3633",
-    "tts_bg":       "#1c2a3a",
-    "tts_fg":       "#388bfd",
-    "audio_bg":     "#1a2d1a",
-    "audio_fg":     "#3fb950",
-    "sonido_bg":    "#2d2114",
-    "sonido_fg":    "#d29922",
+# ── Paletas ───────────────────────────────────────────────────────────────────
+PALETTES: dict[str, dict] = {
+    "dark": {
+        "bg":        "#0d1117",
+        "surface":   "#161b22",
+        "surface2":  "#21262d",
+        "border":    "#30363d",
+        "accent":    "#1f6feb",
+        "accent_h":  "#388bfd",
+        "success":   "#238636",
+        "success_h": "#2ea043",
+        "danger":    "#da3633",
+        "danger_h":  "#f85149",
+        "warning":   "#9e6a03",
+        "warning_h": "#d29922",
+        "text":      "#e6edf3",
+        "text2":     "#8b949e",
+        "text3":     "#484f58",
+        "input_bg":  "#0d1117",
+        "header":    "#010409",
+        "on_air":    "#da3633",
+        "tts_bg":    "#1c2a3a",
+        "tts_fg":    "#388bfd",
+        "audio_bg":  "#1a2d1a",
+        "audio_fg":  "#3fb950",
+        "sonido_bg": "#2d2114",
+        "sonido_fg": "#d29922",
+    },
+    "light": {
+        "bg":        "#f6f8fa",
+        "surface":   "#ffffff",
+        "surface2":  "#f3f4f6",
+        "border":    "#d0d7de",
+        "accent":    "#0969da",
+        "accent_h":  "#0550ae",
+        "success":   "#1a7f37",
+        "success_h": "#116329",
+        "danger":    "#cf222e",
+        "danger_h":  "#a40e26",
+        "warning":   "#9a6700",
+        "warning_h": "#7d4e00",
+        "text":      "#24292f",
+        "text2":     "#57606a",
+        "text3":     "#8c959f",
+        "input_bg":  "#ffffff",
+        "header":    "#eaeef2",
+        "on_air":    "#cf222e",
+        "tts_bg":    "#ddf4ff",
+        "tts_fg":    "#0969da",
+        "audio_bg":  "#dafbe1",
+        "audio_fg":  "#1a7f37",
+        "sonido_bg": "#fff8c5",
+        "sonido_fg": "#9a6700",
+    },
 }
+
+# C es la paleta activa — se actualiza con apply_palette() antes de crear widgets
+C = dict(PALETTES["dark"])
+
+
+def apply_palette(theme_name: str) -> None:
+    """Actualiza C con la paleta del tema indicado.
+    Debe llamarse ANTES de crear cualquier widget."""
+    C.update(PALETTES.get(theme_name, PALETTES["dark"]))
 
 FONTS = {
     "h1":    ("Segoe UI", 16, "bold"),
