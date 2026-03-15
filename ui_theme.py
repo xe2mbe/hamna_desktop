@@ -71,6 +71,19 @@ def apply_palette(theme_name: str) -> None:
     Debe llamarse ANTES de crear cualquier widget."""
     C.update(PALETTES.get(theme_name, PALETTES["dark"]))
 
+
+def apply_fonts(base_size: int = 10) -> None:
+    """Recalculates FONTS with a new base size. Call before creating widgets."""
+    b = max(8, min(16, base_size))
+    FONTS["h1"]      = ("Segoe UI", b + 6, "bold")
+    FONTS["h2"]      = ("Segoe UI", b + 3, "bold")
+    FONTS["h3"]      = ("Segoe UI", b + 1, "bold")
+    FONTS["body"]    = ("Segoe UI", b)
+    FONTS["small"]   = ("Segoe UI", max(8, b - 1))
+    FONTS["mono"]    = ("Consolas", b)
+    FONTS["mono_sm"] = ("Consolas", max(8, b - 1))
+    FONTS["badge"]   = ("Segoe UI", max(7, b - 2), "bold")
+
 FONTS = {
     "h1":    ("Segoe UI", 16, "bold"),
     "h2":    ("Segoe UI", 13, "bold"),
@@ -266,3 +279,118 @@ def labeled_combo(parent: tk.Frame, label: str,
 
 def separator(parent: tk.Frame) -> None:
     tk.Frame(parent, bg=C["border"], height=1).pack(fill=tk.X, pady=8)
+
+
+class HSlider(tk.Canvas):
+    """Modern flat slider — drop-in replacement for tk.Scale.
+
+    API compatible with tk.Scale:
+        .get()        → current int value
+        .set(value)   → set value without firing command
+        command=cb    → called with int value on change
+    """
+
+    _TRACK_H = 4
+    _THUMB_R = 7
+    _PAD_L   = 10   # left padding
+    _PAD_R   = 36   # right padding (space for value label)
+
+    def __init__(self, parent, from_: int = 0, to: int = 100,
+                 command=None, **kw):
+        kw.setdefault("height", 34)
+        kw.setdefault("bg", C["surface"])
+        kw.setdefault("highlightthickness", 0)
+        kw.setdefault("cursor", "hand2")
+        super().__init__(parent, **kw)
+
+        self._from    = int(from_)
+        self._to      = int(to)
+        self._value   = float(from_)
+        self._command = command
+        self._hot     = False          # hover state
+
+        self.bind("<Configure>",     lambda e: self._draw())
+        self.bind("<ButtonPress-1>", self._on_press)
+        self.bind("<B1-Motion>",     self._on_drag)
+        self.bind("<Enter>",         lambda e: self._set_hot(True))
+        self.bind("<Leave>",         lambda e: self._set_hot(False))
+
+    # ── geometry helpers ───────────────────────────────────────────────────
+    def _track_x0(self) -> int:
+        return self._PAD_L
+
+    def _track_x1(self) -> int:
+        w = self.winfo_width() or int(self["width"]) if self["width"] else 200
+        return w - self._PAD_R
+
+    def _thumb_x(self) -> float:
+        span = self._to - self._from
+        if span == 0:
+            return self._track_x0()
+        frac = (self._value - self._from) / span
+        return self._track_x0() + frac * (self._track_x1() - self._track_x0())
+
+    def _x_to_value(self, x: int) -> float:
+        x0, x1 = self._track_x0(), self._track_x1()
+        frac = max(0.0, min(1.0, (x - x0) / max(1, x1 - x0)))
+        return self._from + frac * (self._to - self._from)
+
+    # ── drawing ────────────────────────────────────────────────────────────
+    def _draw(self):
+        self.delete("all")
+        w  = self.winfo_width() or 200
+        h  = self.winfo_height() or 34
+        cy = h // 2
+        x0 = self._track_x0()
+        x1 = self._track_x1()
+        tx = self._thumb_x()
+        r  = self._TRACK_H // 2
+        tr = self._THUMB_R
+
+        # track background
+        self.create_rectangle(x0, cy - r, x1, cy + r,
+                               fill=C["surface2"], outline="", tags="bg")
+        # track fill
+        if tx > x0:
+            self.create_rectangle(x0, cy - r, int(tx), cy + r,
+                                   fill=C["accent"], outline="", tags="fill")
+        # thumb drop-shadow
+        self.create_oval(int(tx) - tr + 1, cy - tr + 1,
+                          int(tx) + tr + 1, cy + tr + 1,
+                          fill=C["bg"], outline="", tags="shadow")
+        # thumb
+        fill_col = C["accent_h"] if self._hot else C["accent"]
+        self.create_oval(int(tx) - tr, cy - tr, int(tx) + tr, cy + tr,
+                          fill=fill_col, outline="#ffffff", width=2,
+                          tags="thumb")
+        # value label
+        self.create_text(x1 + self._PAD_R // 2, cy,
+                          text=str(int(round(self._value))),
+                          font=FONTS["small"], fill=C["text2"],
+                          anchor="center", tags="val")
+
+    # ── event handlers ─────────────────────────────────────────────────────
+    def _set_hot(self, state: bool):
+        self._hot = state
+        self._draw()
+
+    def _on_press(self, e):
+        self._update(e.x)
+
+    def _on_drag(self, e):
+        self._update(e.x)
+
+    def _update(self, x: int):
+        raw = self._x_to_value(x)
+        self._value = max(float(self._from), min(float(self._to), raw))
+        self._draw()
+        if callable(self._command):
+            self._command(int(round(self._value)))
+
+    # ── public API ─────────────────────────────────────────────────────────
+    def get(self) -> int:
+        return int(round(self._value))
+
+    def set(self, value) -> None:
+        self._value = max(float(self._from), min(float(self._to), float(value)))
+        self._draw()

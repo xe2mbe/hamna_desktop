@@ -4,7 +4,7 @@ Widget permanente en la parte inferior de la ventana principal.
 """
 import tkinter as tk
 from tkinter import ttk
-from ui_theme import C, FONTS, HButton
+from ui_theme import C, FONTS, HButton, HSlider, apply_theme
 
 
 class NPBar(tk.Frame):
@@ -134,10 +134,8 @@ class NPBar(tk.Frame):
         vol_frame.pack(side=tk.RIGHT, padx=10)
         tk.Label(vol_frame, text="🔊", font=("Segoe UI", 11),
                  bg=C["bg"], fg=C["text3"]).pack(side=tk.LEFT)
-        self._vol_scale = tk.Scale(vol_frame, from_=0, to=100, orient="horizontal",
-            bg=C["bg"], fg=C["text2"], troughcolor=C["surface2"],
-            highlightthickness=0, bd=0, showvalue=False, width=8,
-            length=70, command=self._vol_changed)
+        self._vol_scale = HSlider(vol_frame, from_=0, to=100,
+            bg=C["bg"], command=self._vol_changed, width=110)
         self._vol_scale.set(85)
         self._vol_scale.pack(side=tk.LEFT)
 

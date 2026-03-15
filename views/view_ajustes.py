@@ -11,7 +11,7 @@ from pathlib import Path
 # Carpeta local donde se almacenan los audios de pausa
 _SONIDOS_DIR = Path(__file__).parent.parent / "media" / "sonidos"
 import settings as cfg_mod
-from ui_theme import C, FONTS, HButton
+from ui_theme import C, FONTS, HButton, HSlider, apply_theme
 from modules.ptt.ptt_manager import PTTManager
 
 
@@ -144,17 +144,11 @@ class ViewAjustes(tk.Frame):
         return cb
 
     def _slider(self, parent: tk.Frame, key: str,
-                from_: int, to: int) -> tk.Scale:
-        sc = tk.Scale(parent, from_=from_, to=to,
-                      orient="horizontal",
-                      bg=C["surface"], fg=C["text2"],
-                      troughcolor=C["surface2"],
-                      highlightthickness=0,
-                      activebackground=C["accent"],
-                      bd=0, showvalue=True)
-        sc.set(int(self.cfg.get(key, from_)))
-        sc.pack(fill=tk.X, pady=(0, 4))
-        return sc
+                from_: int, to: int) -> "HSlider":
+        sl = HSlider(parent, from_=from_, to=to)
+        sl.set(int(self.cfg.get(key, from_)))
+        sl.pack(fill=tk.X, pady=(0, 4))
+        return sl
 
     def _status_badge(self, parent: tk.Frame,
                       text: str, color: str) -> tk.Label:
@@ -174,6 +168,23 @@ class ViewAjustes(tk.Frame):
         inner = self._scrollable(p)
         self._ph(inner, "General", "Preferencias generales de la aplicación")
         body = self._card(inner, "Apariencia", "🎨")
+
+        self._lbl(body, "TAMAÑO DE LETRA")
+        self._font_size_combo = self._combo_row(
+            body, "font_size",
+            ["8 — Muy pequeño", "9 — Pequeño", "10 — Normal",
+             "11 — Grande", "12 — Muy grande"])
+        # Map display values to int
+        self._FONT_SIZE_MAP = {
+            "8 — Muy pequeño": 8, "9 — Pequeño": 9,
+            "10 — Normal": 10,    "11 — Grande": 11,
+            "12 — Muy grande": 12,
+        }
+        self._FONT_SIZE_RMAP = {v: k for k, v in self._FONT_SIZE_MAP.items()}
+        # Set current value
+        cur_size = int(self.cfg.get("font_size", 10))
+        cur_label = self._FONT_SIZE_RMAP.get(cur_size, "10 — Normal")
+        self._font_size_combo.set(cur_label)
 
         self._lbl(body, "TEMA")
         self._theme_combo = self._combo_row(body, "theme", ["dark", "light"])
@@ -212,17 +223,27 @@ class ViewAjustes(tk.Frame):
 
     def _save_general(self) -> None:
         old_theme = self.cfg.get("theme", "dark")
+        old_size  = int(self.cfg.get("font_size", 10))
+
         self.cfg["theme"]           = self._theme_combo.get()
         self.cfg["language"]        = self._language_combo.get()
         self.cfg["start_minimized"] = bool(self._start_minimized_var.get())
         self.cfg["confirm_close"]   = bool(self._confirm_close_var.get())
+        # font size: map label back to int
+        size_label = self._font_size_combo.get()
+        self.cfg["font_size"] = self._FONT_SIZE_MAP.get(size_label, 10)
+
         cfg_mod.save(self.cfg)
         if callable(self.on_cfg_saved):
             self.on_cfg_saved(self.cfg)
-        if self.cfg["theme"] != old_theme:
+
+        needs_restart = (self.cfg["theme"] != old_theme or
+                         self.cfg["font_size"] != old_size)
+        if needs_restart:
             self._theme_note.pack(anchor="w", pady=(0, 6))
-            messagebox.showinfo("Tema cambiado",
-                "El nuevo tema se aplicará la próxima vez que inicies HAMNA Desktop.")
+            messagebox.showinfo("Reinicio necesario",
+                "El tema y/o tamaño de letra se aplicarán la próxima vez "
+                "que inicies HAMNA Desktop.")
         else:
             messagebox.showinfo("Guardado", "Configuración general guardada.")
 

@@ -33,6 +33,8 @@ def main() -> None:
     from ui_theme import apply_palette
     _cfg = cfg_mod.load()
     apply_palette(_cfg.get("theme", "dark"))
+    from ui_theme import apply_fonts
+    apply_fonts(int(_cfg.get("font_size", 10)))
 
     from main_window import MainWindow
     app = MainWindow()

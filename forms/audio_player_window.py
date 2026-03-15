@@ -5,7 +5,7 @@ Controles de reproducción: play/pausa, stop, progreso y volumen.
 import tkinter as tk
 from tkinter import ttk
 from pathlib import Path
-from ui_theme import C, FONTS, HButton, HDialog
+from ui_theme import C, FONTS, HButton, HDialog, HSlider
 from modules.audio.audio_player import AudioPlayer
 from modules.tts.tts_manager import get_audio_duration
 
@@ -64,17 +64,15 @@ class AudioPlayerWindow(HDialog):
         vol_frame.pack(anchor="center")
         tk.Label(vol_frame, text="🔊", font=FONTS["body"],
                  bg=C["bg"], fg=C["text2"]).pack(side=tk.LEFT)
-        self._vol_var = tk.IntVar(value=80)
-        ttk.Scale(vol_frame, from_=0, to=100, orient="horizontal",
-                  variable=self._vol_var, length=180,
-                  command=lambda v: self._player.set_volume(int(float(v)))
-                  ).pack(side=tk.LEFT, padx=8)
-        tk.Label(vol_frame, textvariable=self._vol_var, font=FONTS["small"],
-                 bg=C["bg"], fg=C["text2"], width=3).pack(side=tk.LEFT)
+        self._vol_slider = HSlider(vol_frame, from_=0, to=100, bg=C["bg"],
+                                   command=lambda v: self._player.set_volume(v),
+                                   width=220)
+        self._vol_slider.set(80)
+        self._vol_slider.pack(side=tk.LEFT, padx=8)
 
     # ── Reproducción ───────────────────────────────────────────────────────────
     def _start_play(self) -> None:
-        self._player.set_volume(self._vol_var.get())
+        self._player.set_volume(self._vol_slider.get())
         ok, msg = self._player.play(
             self.filepath,
             on_finished=lambda: self.after(0, self._on_finished)
