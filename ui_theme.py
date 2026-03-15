@@ -179,192 +179,61 @@ def apply_theme(root: tk.Misc) -> None:
 
 
 # ── Botón personalizado ───────────────────────────────────────────────────────
-class HButton(tk.Canvas):
-    """Modern rounded-corner button.
+class HButton(tk.Button):
+    """Flat professional button with semantic color variants.
 
-    Variants and their intent:
-        primary  — main / neutral action          (blue fill)
-        success  — save / confirm / connect       (green fill)
-        danger   — delete / disconnect / clear    (red fill)
-        warning  — caution action                 (amber fill)
-        ghost    — secondary / outlined style     (transparent + border)
-        muted    — cancel / dismiss               (mid-gray fill)
-        on_air   — PTT transmitting               (deep red + border)
-
-    Colors are read from C at draw-time so theme changes are respected.
+    Variants:
+        primary  — main / neutral call-to-action   (blue)
+        success  — save / confirm / connect         (green)
+        edit     — edit / modify actions            (bright green)
+        danger   — delete / disconnect / clear      (red)
+        warning  — caution                          (amber)
+        ghost    — secondary action                 (dark gray)
+        muted    — cancel / dismiss                 (subtle gray)
+        on_air   — PTT transmitting                 (deep red)
+        info     — refresh / informational          (teal)
     """
 
-    # Variant spec:  (bg, bg_hover, fg, border, border_hover)
-    # bg="" means transparent (use parent bg).  border=None = no border.
-    _VARIANTS: dict[str, tuple] = {
-        "primary": ("accent",   "accent_h",   "#ffffff",  None,       None),
-        "success": ("success",  "success_h",  "#ffffff",  None,       None),
-        "danger":  ("danger",   "danger_h",   "#ffffff",  None,       None),
-        "warning": ("warning_h","_amber_h",   "#ffffff",  None,       None),
-        "ghost":   ("",         "surface2",   "text2",    "border",   "accent"),
-        "muted":   ("_gray",    "surface2",   "text2",    "border",   None),
-        "on_air":  ("on_air",   "danger_h",   "#ffffff",  "danger_h", "danger_h"),
+    # (bg_normal, bg_hover, fg)
+    VARIANTS: dict[str, tuple[str, str, str]] = {
+        "primary": ("#0d6efd", "#0b5ed7", "#ffffff"),
+        "success": ("#198754", "#157347", "#ffffff"),
+        "edit":    ("#1a9a52", "#157a42", "#ffffff"),
+        "danger":  ("#c0392b", "#a93226", "#ffffff"),
+        "warning": ("#c47f17", "#a66d11", "#ffffff"),
+        "ghost":   ("#2d333b", "#3d444d", "#adbac7"),
+        "muted":   ("#21262d", "#2d333b", "#8b949e"),
+        "on_air":  ("#9b1c1c", "#b91c1c", "#ffffff"),
+        "info":    ("#0e7490", "#0891b2", "#ffffff"),
     }
-    # Extra literal colors not in palette
-    _EXTRA = {"_amber_h": "#e6a817", "_gray": "#3a404a"}
-
-    _H     = 30    # fixed pixel height
-    _R     = 5     # corner radius
-    _PX    = 16    # horizontal text padding
-    _MIN_W = 80    # minimum pixel width
 
     def __init__(self, parent, text: str = "", command: Callable = None,
                  variant: str = "ghost", width: int = None,
                  icon: str = "", **kw):
-        import tkinter.font as _tkfont
-
-        self._label   = f"{icon}  {text}" if icon else text
-        self._variant = variant
-        self._command = command
-        self._hot     = False
-        self._enabled = True
-
-        # Measure text to auto-size canvas width
-        _mf = _tkfont.Font(family=FONTS["body"][0], size=FONTS["body"][1])
-        cw  = max(self._MIN_W, _mf.measure(self._label) + self._PX * 2)
+        bg, hover, fg = self.VARIANTS.get(variant, self.VARIANTS["ghost"])
+        label = f"{icon}  {text}" if icon else text
+        super().__init__(
+            parent, text=label, command=command,
+            bg=bg, fg=fg,
+            activebackground=hover, activeforeground=fg,
+            font=FONTS["body"], relief="flat", cursor="hand2",
+            padx=14, pady=6, bd=0, highlightthickness=0, **kw
+        )
         if width:
-            cw = max(cw, width)
-
-        # Canvas bg = parent bg so rounded corners blend seamlessly
-        try:
-            pbg = parent.cget("bg")
-        except Exception:
-            pbg = C["bg"]
-
-        for _k in ("padx", "pady", "bd", "relief", "anchor",
-                   "activebackground", "activeforeground"):
-            kw.pop(_k, None)
-        kw["highlightthickness"] = 0
-        kw["cursor"] = "hand2"
-        super().__init__(parent, width=cw, height=self._H, bg=pbg, **kw)
-
-        self.bind("<Configure>",       lambda e: self._draw())
-        self.bind("<Enter>",           self._on_enter)
-        self.bind("<Leave>",           self._on_leave)
-        self.bind("<ButtonPress-1>",   self._on_press)
-        self.bind("<ButtonRelease-1>", self._on_release)
-        self._draw()
-
-    # ── color helpers ──────────────────────────────────────────────────────
-    def _resolve(self, key: str | None) -> str | None:
-        """Resolve a palette key or literal hex color to an actual hex color."""
-        if key is None or key == "":
-            return None
-        if key.startswith("#"):
-            return key
-        if key in self._EXTRA:
-            return self._EXTRA[key]
-        return C.get(key, "#888888")
-
-    def _colors(self) -> tuple:
-        """Return (fill, fill_hover, fg, border, border_hover) for current variant."""
-        spec = self._VARIANTS.get(self._variant, self._VARIANTS["ghost"])
-        bg_key, bgh_key, fg_raw, bdr_key, bdrh_key = spec
-        fill      = self._resolve(bg_key)      # None = transparent
-        fill_h    = self._resolve(bgh_key)
-        fg        = self._resolve(fg_raw) or C["text"]
-        border    = self._resolve(bdr_key)
-        border_h  = self._resolve(bdrh_key)
-        return fill, fill_h, fg, border, border_h
-
-    # ── drawing ────────────────────────────────────────────────────────────
-    def _rrect(self, x0: float, y0: float, x1: float, y1: float,
-               r: int, **kw):
-        pts = [x0+r, y0,  x1-r, y0,
-               x1,   y0+r, x1,  y1-r,
-               x1-r, y1,   x0+r, y1,
-               x0,   y1-r, x0,   y0+r]
-        return self.create_polygon(pts, smooth=True, **kw)
-
-    def _draw(self) -> None:
-        self.delete("all")
-        w = self.winfo_width()
-        if w <= 1:
-            try:
-                w = int(self["width"])
-            except Exception:
-                w = self._MIN_W
-        h, r, pad = self._H, self._R, 1
-
-        fill, fill_h, fg, border, border_h = self._colors()
-
-        if not self._enabled:
-            # Disabled: uniform muted appearance
-            eff_fill   = C["surface2"]
-            eff_border = C["border"]
-            eff_fg     = C["text3"]
-        else:
-            eff_fill   = fill_h  if self._hot else fill
-            eff_border = border_h if (self._hot and border_h) else border
-            eff_fg     = fg
-
-        # Background fill (None = transparent, skip drawing)
-        if eff_fill:
-            self._rrect(pad, pad, w - pad, h - pad, r,
-                        fill=eff_fill, outline="", tags="bg")
-
-        # Border
-        if eff_border:
-            self._rrect(pad, pad, w - pad, h - pad, r,
-                        fill="", outline=eff_border, width=1, tags="bdr")
-
-        # Label
-        self.create_text(w // 2, h // 2, text=self._label,
-                         font=FONTS["body"], fill=eff_fg,
-                         anchor="center", tags="lbl")
-
-    # ── events ─────────────────────────────────────────────────────────────
-    def _on_enter(self, _e) -> None:
-        if self._enabled:
-            self._hot = True
-            self._draw()
-
-    def _on_leave(self, _e) -> None:
-        self._hot = False
-        self._draw()
-
-    def _on_press(self, _e) -> None:
-        pass
-
-    def _on_release(self, _e) -> None:
-        if self._enabled and callable(self._command):
-            self._command()
-
-    # ── public API ─────────────────────────────────────────────────────────
-    def config(self, **kw) -> None:  # type: ignore[override]
-        import tkinter.font as _tkfont
-        redraw = False
-        if "text" in kw:
-            self._label = kw.pop("text")
-            _mf = _tkfont.Font(family=FONTS["body"][0], size=FONTS["body"][1])
-            cw  = max(self._MIN_W, _mf.measure(self._label) + self._PX * 2)
-            super().config(width=cw)
-            redraw = True
-        if "state" in kw:
-            self._enabled = kw.pop("state") != "disabled"
-            super().config(cursor="hand2" if self._enabled else "")
-            redraw = True
-        if "command" in kw:
-            self._command = kw.pop("command")
-        for _k in ("padx", "pady", "bd", "relief", "anchor",
-                   "activebackground", "activeforeground",
-                   "fg", "bg", "font"):
-            kw.pop(_k, None)
-        if kw:
-            super().config(**kw)
-        if redraw:
-            self._draw()
-
-    configure = config  # type: ignore[assignment]
+            self.config(width=width)
+        self._bg    = bg
+        self._hover = hover
+        self._variant = variant
+        self.bind("<Enter>", lambda _: self.config(bg=self._hover))
+        self.bind("<Leave>", lambda _: self.config(bg=self._bg))
 
     def set_variant(self, variant: str) -> None:
+        bg, hover, fg = self.VARIANTS.get(variant, self.VARIANTS["ghost"])
+        self._bg      = bg
+        self._hover   = hover
         self._variant = variant
-        self._draw()
+        self.config(bg=bg, fg=fg,
+                    activebackground=hover, activeforeground=fg)
 
 
 # ── Diálogo modal base ────────────────────────────────────────────────────────

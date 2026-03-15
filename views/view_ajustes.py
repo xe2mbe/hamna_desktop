@@ -580,7 +580,7 @@ class ViewAjustes(tk.Frame):
         self._ser_port.pack(side=tk.LEFT, fill=tk.X, expand=True)
         HButton(port_row, t("serial.refresh"),
                 command=self._refresh_ports,
-                variant="ghost").pack(side=tk.LEFT, padx=(6, 0))
+                variant="info").pack(side=tk.LEFT, padx=(6, 0))
 
         self._lbl(body, t("serial.baudrate"))
         bauds = ["1200","2400","4800","9600","19200",
@@ -1223,7 +1223,7 @@ class ViewAjustes(tk.Frame):
                 variant="danger").pack(side=tk.LEFT)
         HButton(btn_row, t("logs.refresh"),
                 command=self.refresh_logs,
-                variant="ghost").pack(side=tk.LEFT, padx=(6, 0))
+                variant="info").pack(side=tk.LEFT, padx=(6, 0))
         self.refresh_logs()
 
     def refresh_logs(self) -> None:

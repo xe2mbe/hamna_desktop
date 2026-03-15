@@ -36,13 +36,13 @@ class ViewSecciones(tk.Frame):
                 variant="primary").pack(side=tk.LEFT)
         HButton(tb, "✏️ Editar",
                 command=self._edit_seccion_sel,
-                variant="ghost").pack(side=tk.LEFT, padx=(6, 0))
+                variant="edit").pack(side=tk.LEFT, padx=(6, 0))
         HButton(tb, "🗑 Eliminar",
                 command=self._del_seccion_sel,
                 variant="danger").pack(side=tk.LEFT, padx=(6, 0))
         HButton(tb, "↺ Actualizar",
                 command=self.load_secciones,
-                variant="ghost").pack(side=tk.LEFT, padx=(6, 0))
+                variant="info").pack(side=tk.LEFT, padx=(6, 0))
 
         self._search_var = tk.StringVar()
         self._search_var.trace_add("write", lambda *_: self._filter())

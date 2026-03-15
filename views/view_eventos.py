@@ -106,13 +106,13 @@ class ViewEventos(tk.Frame):
                 variant="primary").pack(side=tk.LEFT)
         HButton(tb, "✏️ Editar Evento",
                 command=self._edit_evento,
-                variant="ghost").pack(side=tk.LEFT, padx=(6, 0))
+                variant="edit").pack(side=tk.LEFT, padx=(6, 0))
         HButton(tb, "🗑 Eliminar Evento",
                 command=self._del_evento,
                 variant="danger").pack(side=tk.LEFT, padx=(6, 0))
         HButton(tb, "↺ Actualizar",
                 command=self.load_eventos,
-                variant="ghost").pack(side=tk.LEFT, padx=(6, 0))
+                variant="info").pack(side=tk.LEFT, padx=(6, 0))
 
         self._search_var = tk.StringVar()
         self._search_var.trace_add("write", lambda *_: self._filter())
