@@ -11,22 +11,21 @@ from forms.seccion_form import SeccionForm
 from forms.audio_player_window import AudioPlayerWindow
 
 
-TIPO_BG = {"TTS": C["tts_bg"], "Audio": C["audio_bg"], "Sonido": C["sonido_bg"]}
-TIPO_FG = {"TTS": C["tts_fg"], "Audio": C["audio_fg"], "Sonido": C["sonido_fg"]}
-
-
 class ViewSecciones(tk.Frame):
 
     def __init__(self, parent, cfg: dict):
         super().__init__(parent, bg=C["bg"])
         self.cfg = cfg
-        self._all_secs = []
+        self._all_secs: list[dict] = []
+        self._selected_id: int | None = None
+        self._sort_col: str = "nombre"
+        self._sort_asc: bool = True
         self._build()
         self.load_secciones()
 
     # ── Build ──────────────────────────────────────────────────────────────────
     def _build(self) -> None:
-        # Toolbar
+        # ── Toolbar ────────────────────────────────────────────────────────
         tb = tk.Frame(self, bg=C["surface"], padx=12, pady=8)
         tb.pack(fill=tk.X)
         tk.Frame(self, bg=C["border"], height=1).pack(fill=tk.X)
@@ -40,17 +39,21 @@ class ViewSecciones(tk.Frame):
         HButton(tb, "🗑 Eliminar",
                 command=self._del_seccion_sel,
                 variant="danger").pack(side=tk.LEFT, padx=(6, 0))
+        HButton(tb, "▶ Reproducir",
+                command=self._play_sel,
+                variant="success").pack(side=tk.LEFT, padx=(6, 0))
         HButton(tb, "↺ Actualizar",
                 command=self.load_secciones,
                 variant="info").pack(side=tk.LEFT, padx=(6, 0))
 
+        # Búsqueda
         self._search_var = tk.StringVar()
         self._search_var.trace_add("write", lambda *_: self._filter())
         ttk.Entry(tb, textvariable=self._search_var, width=22).pack(side=tk.RIGHT)
         tk.Label(tb, text="🔍", font=FONTS["body"],
                  bg=C["surface"], fg=C["text2"]).pack(side=tk.RIGHT, padx=(0, 4))
 
-        # Filtro de tipo
+        # Filtro por tipo
         self._tipo_var = tk.StringVar(value="Todos")
         tipo_cb = ttk.Combobox(tb, textvariable=self._tipo_var,
                                values=["Todos", "TTS", "Audio", "Sonido"],
@@ -60,60 +63,65 @@ class ViewSecciones(tk.Frame):
         tk.Label(tb, text="Tipo:", font=FONTS["small"],
                  bg=C["surface"], fg=C["text2"]).pack(side=tk.RIGHT, padx=(0, 2))
 
-        # Área con header + canvas alineados
+        # ── Tabla ──────────────────────────────────────────────────────────
         area = tk.Frame(self, bg=C["bg"])
         area.pack(fill=tk.BOTH, expand=True)
 
-        # Scrollbar primero para que header y canvas compartan el mismo ancho
         sb = ttk.Scrollbar(area, orient="vertical")
         sb.pack(side=tk.RIGHT, fill=tk.Y)
 
-        # Header de columnas
-        hdr = tk.Frame(area, bg=C["surface2"])
-        hdr.pack(fill=tk.X)
-        hdr.columnconfigure(2, weight=1)
+        cols = ("nombre", "archivo", "tipo", "dur")
+        self._tree = ttk.Treeview(
+            area, columns=cols, show="headings",
+            yscrollcommand=sb.set, selectmode="browse")
+        sb.config(command=self._tree.yview)
 
-        tk.Frame(hdr, width=3, bg=C["surface2"]).grid(
-            row=0, column=0, sticky="ns")
-        tk.Label(hdr, text="Nombre", font=FONTS["badge"],
-                 bg=C["surface2"], fg=C["text3"],
-                 anchor="w", padx=10, pady=5).grid(
-            row=0, column=2, sticky="ew")
-        tk.Label(hdr, text="Tipo", font=FONTS["badge"],
-                 bg=C["surface2"], fg=C["text3"],
-                 width=9, anchor="center").grid(row=0, column=3, padx=4)
-        tk.Label(hdr, text="Dur.", font=FONTS["badge"],
-                 bg=C["surface2"], fg=C["text3"],
-                 width=6, anchor="e").grid(row=0, column=4, padx=(4, 8))
-        tk.Label(hdr, text="Acciones", font=FONTS["badge"],
-                 bg=C["surface2"], fg=C["text3"],
-                 width=12, anchor="center").grid(row=0, column=5, padx=(0, 6))
+        # Encabezados con ordenamiento al hacer clic
+        self._tree.heading("nombre",  text="Nombre",  anchor="w",
+                           command=lambda: self._sort_by("nombre"))
+        self._tree.heading("archivo", text="Archivo", anchor="w",
+                           command=lambda: self._sort_by("archivo"))
+        self._tree.heading("tipo",    text="Tipo",    anchor="center",
+                           command=lambda: self._sort_by("tipo"))
+        self._tree.heading("dur",     text="Duración", anchor="e",
+                           command=lambda: self._sort_by("dur"))
 
-        tk.Frame(area, bg=C["border"], height=1).pack(fill=tk.X)
+        # Anchos de columna
+        self._tree.column("nombre",  anchor="w",      minwidth=120, width=200, stretch=True)
+        self._tree.column("archivo", anchor="w",      minwidth=100, width=200, stretch=True)
+        self._tree.column("tipo",    anchor="center", minwidth=70,  width=85,  stretch=False)
+        self._tree.column("dur",     anchor="e",      minwidth=70,  width=80,  stretch=False)
 
-        # Canvas scrollable
-        self._canvas = tk.Canvas(area, bg=C["bg"], highlightthickness=0,
-                                  yscrollcommand=sb.set)
-        sb.config(command=self._canvas.yview)
-        self._inner = tk.Frame(self._canvas, bg=C["bg"])
-        self._inner.bind("<Configure>",
-            lambda e: self._canvas.configure(
-                scrollregion=self._canvas.bbox("all")))
-        _win = self._canvas.create_window((0, 0), window=self._inner, anchor="nw")
-        self._canvas.bind("<Configure>",
-            lambda e: self._canvas.itemconfig(_win, width=e.width))
-        self._canvas.pack(fill=tk.BOTH, expand=True)
+        # Tags de color por tipo
+        self._tree.tag_configure("TTS",    foreground=C["tts_fg"])
+        self._tree.tag_configure("Audio",  foreground=C["audio_fg"])
+        self._tree.tag_configure("Sonido", foreground=C["sonido_fg"])
+        self._tree.tag_configure("none",   foreground=C["text3"])
 
-        # Footer resumen
+        self._tree.pack(fill=tk.BOTH, expand=True)
+        self._tree.bind("<<TreeviewSelect>>", self._on_select)
+        self._tree.bind("<Double-Button-1>",  lambda _: self._edit_seccion_sel())
+        self._tree.bind("<Button-3>",         self._on_right_click)
+
+        # Menú contextual
+        self._ctx_menu = tk.Menu(self, tearoff=0,
+                                 bg=C["surface"], fg=C["text"],
+                                 activebackground="#0d6efd",
+                                 activeforeground="#ffffff",
+                                 font=FONTS["body"], bd=0)
+        self._ctx_menu.add_command(label="▶  Reproducir", command=self._play_sel)
+        self._ctx_menu.add_command(label="✏️  Editar",     command=self._edit_seccion_sel)
+        self._ctx_menu.add_separator()
+        self._ctx_menu.add_command(label="🗑  Eliminar",   command=self._del_seccion_sel)
+
+        # ── Footer ─────────────────────────────────────────────────────────
         tk.Frame(self, bg=C["border"], height=1).pack(fill=tk.X, side=tk.BOTTOM)
         foot = tk.Frame(self, bg=C["surface"], padx=12, pady=5)
         foot.pack(fill=tk.X, side=tk.BOTTOM)
-        self._lbl_summary = tk.Label(foot, text="",
-                                      font=FONTS["small"],
-                                      bg=C["surface"], fg=C["text2"])
+        self._lbl_summary = tk.Label(
+            foot, text="", font=FONTS["small"],
+            bg=C["surface"], fg=C["text2"])
         self._lbl_summary.pack(side=tk.LEFT)
-
-        self._selected_id: int | None = None
 
     # ── Datos ──────────────────────────────────────────────────────────────────
     def load_secciones(self) -> None:
@@ -125,109 +133,87 @@ class ViewSecciones(tk.Frame):
         tipo = self._tipo_var.get()
         rows = [s for s in self._all_secs
                 if (not q or q in s["nombre"].lower()
-                    or q in (s["tipo"] or "").lower())
+                    or q in (s["tipo"] or "").lower()
+                    or q in (Path(s.get("ruta_archivo") or "").name).lower())
                 and (tipo == "Todos" or (s["tipo"] or "") == tipo)]
+        rows = self._apply_sort(rows)
         self._render(rows)
+
+    def _sort_by(self, col: str) -> None:
+        if self._sort_col == col:
+            self._sort_asc = not self._sort_asc
+        else:
+            self._sort_col = col
+            self._sort_asc = True
+        self._update_heading_arrows()
+        self._filter()
+
+    def _apply_sort(self, rows: list) -> list:
+        col = self._sort_col
+
+        def key(s):
+            if col == "nombre":
+                return s["nombre"].lower()
+            if col == "archivo":
+                return Path(s.get("ruta_archivo") or "").name.lower()
+            if col == "tipo":
+                return (s.get("tipo") or "").lower()
+            if col == "dur":
+                return s.get("duracion") or 0
+            return ""
+
+        return sorted(rows, key=key, reverse=not self._sort_asc)
+
+    def _update_heading_arrows(self) -> None:
+        labels = {"nombre": "Nombre", "archivo": "Archivo",
+                  "tipo": "Tipo", "dur": "Duración"}
+        for col, base in labels.items():
+            if col == self._sort_col:
+                arrow = " ▲" if self._sort_asc else " ▼"
+                self._tree.heading(col, text=base + arrow)
+            else:
+                self._tree.heading(col, text=base)
 
     # ── Render ─────────────────────────────────────────────────────────────────
     def _render(self, secs: list) -> None:
-        for w in self._inner.winfo_children():
-            w.destroy()
-
-        if not secs:
-            tk.Label(self._inner,
-                     text="No hay secciones — crea una con '＋ Nueva Sección'",
-                     font=FONTS["small"], bg=C["bg"], fg=C["text3"],
-                     pady=24).pack(expand=True)
-            self._canvas.configure(scrollregion=self._canvas.bbox("all"))
-            total_dur = sum(s["duracion"] for s in self._all_secs)
-            self._lbl_summary.config(
-                text=f"{len(self._all_secs)} sección(es) en biblioteca"
-                     f" · {self._fmt(total_dur)} total")
-            return
+        self._tree.delete(*self._tree.get_children())
 
         for sec in secs:
-            self._make_row(sec)
+            tipo    = sec.get("tipo") or ""
+            ruta    = sec.get("ruta_archivo") or ""
+            archivo = Path(ruta).name if ruta else "—"
+            dur     = self._fmt(sec.get("duracion", 0))
+            tag     = tipo if tipo in ("TTS", "Audio", "Sonido") else "none"
+            self._tree.insert(
+                "", "end",
+                iid=str(sec["id"]),
+                values=(sec["nombre"], archivo, tipo or "—", dur),
+                tags=(tag,))
 
-        self._canvas.configure(scrollregion=self._canvas.bbox("all"))
+        # Restaurar selección si sigue en la lista
+        if self._selected_id and str(self._selected_id) in self._tree.get_children():
+            self._tree.selection_set(str(self._selected_id))
+            self._tree.see(str(self._selected_id))
+
+        # Footer
         total_dur = sum(s["duracion"] for s in self._all_secs)
         shown = len(secs)
         total = len(self._all_secs)
-        suffix = f"(mostrando {shown} de {total})" if shown != total else ""
+        suffix = f"  (mostrando {shown} de {total})" if shown != total else ""
         self._lbl_summary.config(
-            text=f"{total} sección(es) · {self._fmt(total_dur)} total {suffix}")
+            text=f"{total} sección(es) · {self._fmt(total_dur)} total{suffix}")
 
-    def _make_row(self, sec: dict) -> None:
-        is_sel = self._selected_id == sec["id"]
-        bg = C["surface"] if is_sel else C["bg"]
-        tipo = sec.get("tipo") or ""
+    def _on_select(self, _event=None) -> None:
+        sel = self._tree.selection()
+        self._selected_id = int(sel[0]) if sel else None
 
-        row = tk.Frame(self._inner, bg=bg, cursor="hand2")
-        row.pack(fill=tk.X)
-        row.columnconfigure(2, weight=1)
-
-        ind = tk.Frame(row, bg=TIPO_BG.get(tipo, C["border"]), width=3)
-        ind.grid(row=0, column=0, sticky="ns")
-
-        lbl_nombre = tk.Label(row, text=sec["nombre"], font=FONTS["body"],
-                               bg=bg, fg=C["text"], anchor="w", padx=10, pady=8)
-        lbl_nombre.grid(row=0, column=2, sticky="ew")
-
-        lbl_tipo = tk.Label(row,
-                             text=tipo or "—", font=FONTS["badge"],
-                             bg=TIPO_BG.get(tipo, C["surface2"]),
-                             fg=TIPO_FG.get(tipo, C["text2"]),
-                             padx=6, pady=2, width=9, anchor="center")
-        lbl_tipo.grid(row=0, column=3, padx=4)
-
-        lbl_dur = tk.Label(row, text=self._fmt(sec.get("duracion", 0)),
-                            font=FONTS["mono_sm"], bg=bg, fg=C["text3"],
-                            width=6, anchor="e")
-        lbl_dur.grid(row=0, column=4, padx=(4, 8))
-
-        btns = tk.Frame(row, bg=bg)
-        btns.grid(row=0, column=5, padx=(0, 6))
-
-        sec_id = sec["id"]
-        for txt, fg_col, cmd in [
-            ("▶",  C["text2"],   lambda sid=sec_id: self._play(sid)),
-            ("✏️", C["text2"],   lambda sid=sec_id: self._edit(sid)),
-            ("🗑", C["danger"],  lambda sid=sec_id, nm=sec["nombre"]: self._delete(sid, nm)),
-        ]:
-            tk.Button(btns, text=txt, font=FONTS["small"],
-                      bg=C["surface2"], fg=fg_col,
-                      relief="flat", bd=0, padx=6, pady=2,
-                      cursor="hand2", command=cmd
-                      ).pack(side=tk.LEFT, padx=1)
-
-        def _enter(e, widgets=(row, lbl_nombre, lbl_dur), b=btns):
-            for w in widgets:
-                w.config(bg=C["surface"])
-            b.config(bg=C["surface"])
-            for child in b.winfo_children():
-                child.config(bg=C["surface2"])
-
-        def _leave(e, widgets=(row, lbl_nombre, lbl_dur), b=btns,
-                   bg_=bg, sel=is_sel):
-            nb = C["surface"] if sel else bg_
-            for w in widgets:
-                w.config(bg=nb)
-            b.config(bg=nb)
-            for child in b.winfo_children():
-                child.config(bg=C["surface2"])
-
-        handler = lambda e, sid=sec["id"]: self._select(sid)
-        for w in (row, ind, lbl_nombre, lbl_dur):
-            w.bind("<Enter>",    _enter)
-            w.bind("<Leave>",    _leave)
-            w.bind("<Button-1>", handler)
-        lbl_tipo.bind("<Button-1>", handler)
-
-        tk.Frame(self._inner, bg=C["surface"], height=1).pack(fill=tk.X)
-
-    def _select(self, sec_id: int) -> None:
-        self._selected_id = sec_id
-        self._filter()
+    def _on_right_click(self, event) -> None:
+        iid = self._tree.identify_row(event.y)
+        if not iid:
+            return
+        self._tree.selection_set(iid)
+        self._selected_id = int(iid)
+        self._ctx_menu.tk_popup(event.x_root, event.y_root)
 
     # ── Acciones ───────────────────────────────────────────────────────────────
     def _nueva_seccion(self) -> None:
@@ -238,10 +224,7 @@ class ViewSecciones(tk.Frame):
             messagebox.showinfo("Selección",
                 "Selecciona una sección primero.", parent=self)
             return
-        self._edit(self._selected_id)
-
-    def _edit(self, sec_id: int) -> None:
-        SeccionForm(self, seccion_id=sec_id,
+        SeccionForm(self, seccion_id=self._selected_id,
                     cfg=self.cfg, on_saved=self.load_secciones)
 
     def _del_seccion_sel(self) -> None:
@@ -251,29 +234,33 @@ class ViewSecciones(tk.Frame):
             return
         sec = next((s for s in self._all_secs
                     if s["id"] == self._selected_id), None)
-        if sec:
-            self._delete(sec["id"], sec["nombre"])
-
-    def _delete(self, sec_id: int, nombre: str) -> None:
-        if messagebox.askyesno("Confirmar eliminación",
-                f"¿Eliminar «{nombre}» de la biblioteca?\n"
+        if not sec:
+            return
+        if messagebox.askyesno(
+                "Confirmar eliminación",
+                f"¿Eliminar «{sec['nombre']}» de la biblioteca?\n"
                 "Se quitará de todos los eventos que la tengan.",
                 parent=self):
-            db.delete_seccion(sec_id)
-            if self._selected_id == sec_id:
-                self._selected_id = None
+            db.delete_seccion(self._selected_id)
+            self._selected_id = None
             self.load_secciones()
 
-    def _play(self, sec_id: int) -> None:
-        sec = db.get_seccion_by_id(sec_id)
+    def _play_sel(self) -> None:
+        if not self._selected_id:
+            messagebox.showinfo("Selección",
+                "Selecciona una sección primero.", parent=self)
+            return
+        sec = db.get_seccion_by_id(self._selected_id)
         if sec and sec["ruta_archivo"]:
             if Path(sec["ruta_archivo"]).is_file():
                 AudioPlayerWindow(self, sec["ruta_archivo"])
             else:
-                messagebox.showwarning("Archivo no encontrado",
+                messagebox.showwarning(
+                    "Archivo no encontrado",
                     f"No se encontró:\n{sec['ruta_archivo']}", parent=self)
         else:
-            messagebox.showinfo("Sin archivo",
+            messagebox.showinfo(
+                "Sin archivo",
                 "Esta sección no tiene archivo de audio asignado.",
                 parent=self)
 

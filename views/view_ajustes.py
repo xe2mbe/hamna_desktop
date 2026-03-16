@@ -953,19 +953,20 @@ class ViewAjustes(tk.Frame):
         self._lbl(body, t("audio.device"))
         devices = [t("audio.default")]
         try:
-            import pygame
-            pygame.mixer.init()
-            devices += [f"Dispositivo {i}"
-                        for i in range(pygame.mixer.get_num_channels())]
+            import sounddevice as _sd
+            for d in _sd.query_devices():
+                if d["max_output_channels"] > 0:
+                    devices.append(d["name"])
         except Exception:
             pass
-        self._audio_dev = ttk.Combobox(body, values=devices)
-        self._audio_dev.set(self.cfg.get("audio_device") or devices[0])
+        self._audio_dev = ttk.Combobox(body, values=devices, state="readonly")
+        saved = self.cfg.get("audio_device") or devices[0]
+        self._audio_dev.set(saved if saved in devices else devices[0])
         self._audio_dev.pack(fill=tk.X, pady=(0, 10))
         self._lbl(body, t("audio.master_vol"))
         self._audio_vol = self._slider(body, "audio_volume", 0, 100)
         HButton(body, t("audio.test"),
-                command=lambda: None, variant="ghost").pack(
+                command=self._test_audio, variant="info").pack(
             side=tk.LEFT, pady=(8, 0))
         HButton(body, t("audio.save"),
                 command=self._save_audio,
@@ -977,6 +978,24 @@ class ViewAjustes(tk.Frame):
         self.cfg["audio_volume"] = int(self._audio_vol.get())
         cfg_mod.save(self.cfg)
         messagebox.showinfo(t("audio.saved_title"), t("audio.saved_msg"))
+
+    def _test_audio(self) -> None:
+        from pathlib import Path
+        import threading
+        test_file = Path(__file__).parent.parent / "media" / "sonidos" / "hamna_presentacion.mp3"
+        if not test_file.is_file():
+            messagebox.showwarning("Prueba de audio", "Archivo de prueba no encontrado.")
+            return
+        def _play():
+            try:
+                import pygame
+                pygame.mixer.init()
+                pygame.mixer.music.load(str(test_file))
+                pygame.mixer.music.set_volume(int(self._audio_vol.get()) / 100.0)
+                pygame.mixer.music.play()
+            except Exception as e:
+                self.after(0, lambda: messagebox.showerror("Error", str(e)))
+        threading.Thread(target=_play, daemon=True).start()
 
     # ══════════════════════════════════════════════════════════════════════════
     # PANEL TIEMPOS Y PAUSAS

@@ -32,14 +32,14 @@ class ViewProgramacion(tk.Frame):
                 variant="primary").pack(side=tk.LEFT)
         HButton(tb, "🗑 Limpiar todo",
                 command=self._clear_all,
-                variant="ghost").pack(side=tk.LEFT, padx=(6, 0))
+                variant="danger").pack(side=tk.LEFT, padx=(6, 0))
 
         HButton(tb, "→ Sig",
                 command=lambda: None,
-                variant="ghost").pack(side=tk.RIGHT)
+                variant="info").pack(side=tk.RIGHT)
         HButton(tb, "← Ant",
                 command=lambda: None,
-                variant="ghost").pack(side=tk.RIGHT, padx=(0, 4))
+                variant="info").pack(side=tk.RIGHT, padx=(0, 4))
         tk.Label(tb, text="Semana",
                  font=FONTS["body"], bg=C["surface"],
                  fg=C["text2"]).pack(side=tk.RIGHT, padx=(0, 8))
