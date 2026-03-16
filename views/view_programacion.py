@@ -4,7 +4,7 @@ Calendario semanal + editor inline de fecha/hora + botón Transmitir.
 """
 import tkinter as tk
 from tkinter import ttk, messagebox
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 import database as db
 from ui_theme import C, FONTS, HButton
 
@@ -53,23 +53,60 @@ class ViewProgramacion(tk.Frame):
                           ("semana", "ESTA SEMANA"),
                           ("pend",   "SIN PROGRAMAR")]:
             f = tk.Frame(stats, bg=C["surface2"], padx=14, pady=10)
-            f.pack(side=tk.LEFT, padx=(0, 8), ipadx=6)
+            f.pack(side=tk.LEFT, padx=(0, 8), ipadx=6, fill=tk.Y)
             v = tk.StringVar(value="0")
             self._stat_vars[key] = v
             tk.Label(f, textvariable=v, font=FONTS["h2"],
                      bg=C["surface2"], fg=C["text"]).pack()
             tk.Label(f, text=lbl, font=FONTS["badge"],
                      bg=C["surface2"], fg=C["text3"]).pack()
+
+        # ── Relojes ───────────────────────────────────────────────────────────
+        clocks = tk.Frame(stats, bg=C["surface2"], padx=16, pady=8)
+        clocks.pack(side=tk.LEFT, padx=(16, 0), fill=tk.Y)
+
+        # Local
+        tk.Label(clocks, text="LOCAL", font=FONTS["badge"],
+                 bg=C["surface2"], fg=C["text3"]).grid(
+            row=0, column=0, sticky="w")
+        self._lbl_local = tk.Label(clocks, text="",
+                                    font=("Consolas", 18, "bold"),
+                                    bg=C["surface2"], fg=C["text"])
+        self._lbl_local.grid(row=1, column=0, sticky="w")
+        self._lbl_local_date = tk.Label(clocks, text="",
+                                         font=FONTS["small"],
+                                         bg=C["surface2"], fg=C["text2"])
+        self._lbl_local_date.grid(row=2, column=0, sticky="w")
+
+        # Separador vertical
+        tk.Frame(clocks, bg=C["border"], width=1).grid(
+            row=0, column=1, rowspan=3, sticky="ns", padx=16)
+
+        # UTC
+        tk.Label(clocks, text="UTC", font=FONTS["badge"],
+                 bg=C["surface2"], fg=C["text3"]).grid(
+            row=0, column=2, sticky="w")
+        self._lbl_utc = tk.Label(clocks, text="",
+                                  font=("Consolas", 18, "bold"),
+                                  bg=C["surface2"], fg=C["accent"])
+        self._lbl_utc.grid(row=1, column=2, sticky="w")
+        self._lbl_utc_date = tk.Label(clocks, text="",
+                                       font=FONTS["small"],
+                                       bg=C["surface2"], fg=C["text2"])
+        self._lbl_utc_date.grid(row=2, column=2, sticky="w")
+
+        self._tick_clock()
         tk.Frame(self, bg=C["border"], height=1).pack(fill=tk.X)
 
-        # Body split
-        body = tk.Frame(self, bg=C["bg"])
-        body.pack(fill=tk.BOTH, expand=True)
+        # Body split — PanedWindow redimensionable
+        paned = tk.PanedWindow(self, orient=tk.HORIZONTAL,
+                               bg=C["border"], sashwidth=5,
+                               sashrelief="flat", bd=0)
+        paned.pack(fill=tk.BOTH, expand=True)
 
         # Panel izquierdo — lista de eventos
-        lp = tk.Frame(body, bg=C["bg"], width=290)
-        lp.pack(side=tk.LEFT, fill=tk.Y)
-        lp.pack_propagate(False)
+        lp = tk.Frame(paned, bg=C["bg"])
+        paned.add(lp, minsize=180, width=290, stretch="never")
 
         tk.Label(lp, text="EVENTOS", font=FONTS["badge"],
                  bg=C["surface2"], fg=C["text3"],
@@ -92,13 +129,9 @@ class ViewProgramacion(tk.Frame):
         self._ev_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         ev_sb.pack(side=tk.RIGHT, fill=tk.Y)
 
-        # Separador
-        tk.Frame(body, bg=C["border"], width=1).pack(
-            side=tk.LEFT, fill=tk.Y)
-
         # Panel derecho — timeline + editor
-        rp = tk.Frame(body, bg=C["bg"])
-        rp.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        rp = tk.Frame(paned, bg=C["bg"])
+        paned.add(rp, minsize=200, stretch="always")
 
         # Right header
         rh = tk.Frame(rp, bg=C["bg"], padx=14, pady=8)
@@ -116,12 +149,13 @@ class ViewProgramacion(tk.Frame):
         self._sched_form.pack(fill=tk.X)
         self._sched_form.pack_forget()  # oculto hasta selección
 
-        tk.Label(self._sched_form, text="Programar:",
+        tk.Label(self._sched_form, text="Editando programación:",
                  font=FONTS["small"], bg=C["surface"],
                  fg=C["text2"]).grid(row=0, column=0, sticky="w")
         self._lbl_sched_ev = tk.Label(self._sched_form, text="",
             font=FONTS["h3"], bg=C["surface"], fg=C["accent"])
-        self._lbl_sched_ev.grid(row=0, column=1, sticky="w", padx=(6, 0))
+        self._lbl_sched_ev.grid(row=0, column=1, columnspan=3,
+                                 sticky="w", padx=(6, 0))
 
         tk.Label(self._sched_form, text="FECHA",
                  font=FONTS["badge"], bg=C["surface"],
@@ -129,14 +163,25 @@ class ViewProgramacion(tk.Frame):
         self._sched_date = ttk.Entry(self._sched_form, width=14)
         self._sched_date.grid(row=2, column=0, sticky="ew", padx=(0, 8))
 
-        tk.Label(self._sched_form, text="HORA",
+        tk.Label(self._sched_form, text="HORA  (hora local del equipo)",
                  font=FONTS["badge"], bg=C["surface"],
                  fg=C["text3"]).grid(row=1, column=1, sticky="w", pady=(8, 2))
         self._sched_time = ttk.Entry(self._sched_form, width=10)
         self._sched_time.grid(row=2, column=1, sticky="ew", padx=(0, 8))
 
+        tk.Label(self._sched_form, text="RECURRENCIA",
+                 font=FONTS["badge"], bg=C["surface"],
+                 fg=C["text3"]).grid(row=1, column=2, sticky="w",
+                                     padx=(8, 0), pady=(8, 2))
+        self._sched_rec = ttk.Combobox(
+            self._sched_form,
+            values=["ninguna", "diaria", "semanal", "lun-vie"],
+            state="readonly", width=10)
+        self._sched_rec.set("ninguna")
+        self._sched_rec.grid(row=2, column=2, sticky="ew", padx=(8, 8))
+
         btn_f = tk.Frame(self._sched_form, bg=C["surface"])
-        btn_f.grid(row=2, column=2, padx=(8, 0))
+        btn_f.grid(row=2, column=3, padx=(8, 0))
         HButton(btn_f, "✓ Guardar",
                 command=self._save_sched,
                 variant="success").pack(side=tk.LEFT)
@@ -170,6 +215,15 @@ class ViewProgramacion(tk.Frame):
         self._tl_canvas.configure(yscrollcommand=tl_sb.set)
         self._tl_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         tl_sb.pack(side=tk.RIGHT, fill=tk.Y)
+
+    def _tick_clock(self) -> None:
+        now_local = datetime.now()
+        now_utc   = datetime.now(timezone.utc)
+        self._lbl_local.config(     text=now_local.strftime("%H:%M:%S"))
+        self._lbl_local_date.config(text=now_local.strftime("%Y-%m-%d"))
+        self._lbl_utc.config(       text=now_utc.strftime(  "%H:%M:%S"))
+        self._lbl_utc_date.config(  text=now_utc.strftime(  "%Y-%m-%d"))
+        self.after(1000, self._tick_clock)
 
     # ── Carga de datos ────────────────────────────────────────────────────────
     def load_data(self) -> None:
@@ -208,7 +262,7 @@ class ViewProgramacion(tk.Frame):
                  bg=bg, fg=C["text3"]).pack(anchor="w")
 
         sched_frame = tk.Frame(row, bg=bg)
-        sched_frame.pack(side=tk.RIGHT)
+        sched_frame.pack(side=tk.RIGHT, padx=(0, 4))
         if sched:
             tk.Label(sched_frame, text=sched["hora"],
                      font=FONTS["mono_sm"], bg=bg,
@@ -222,32 +276,55 @@ class ViewProgramacion(tk.Frame):
                      font=FONTS["small"], bg=bg,
                      fg=C["text3"]).pack(anchor="e")
 
-        # Botón transmitir (hover)
+        # Contenedor fijo para botones de acción (evita que el layout se mueva)
+        btn_area = tk.Frame(row, bg=bg)
+        btn_area.pack(side=tk.RIGHT, padx=(4, 0))
+
+        # Botón transmitir (oculto inicialmente, aparece en hover)
         lbl_tx = "● AL AIRE" if is_on_air else "📡 Transmitir"
-        btn_tx = tk.Button(row, text=lbl_tx, font=FONTS["small"],
+        btn_tx = tk.Button(btn_area, text=lbl_tx, font=FONTS["small"],
                            bg=C["danger"] if is_on_air else bg,
                            fg="#fff" if is_on_air else C["text3"],
                            relief="flat", bd=0, padx=6, cursor="hand2",
                            activebackground=C["danger"],
                            activeforeground="#fff",
                            command=lambda eid=ev["id"]: self.on_transmitir(eid))
-        btn_tx.pack(side=tk.RIGHT, padx=(6, 0))
+        btn_tx.pack(side=tk.LEFT, padx=(0, 4))
         if not is_on_air:
             btn_tx.pack_forget()
 
-        def _enter(e, b=btn_tx, r=row, bg_=bg):
-            r.config(bg=C["surface"])
-            for w in r.winfo_children():
-                try: w.config(bg=C["surface"])
-                except Exception: pass
-            b.pack(side=tk.RIGHT, padx=(6, 0))
+        # Botón 📅 programar (siempre visible, a la derecha de Transmitir)
+        tk.Button(btn_area, text="📅", font=FONTS["body"],
+                  bg=bg, fg=C["text3"],
+                  relief="flat", bd=0, padx=4, cursor="hand2",
+                  activebackground=C["surface"],
+                  activeforeground=C["accent"],
+                  command=lambda eid=ev["id"]: self._open_prog_modal(eid)
+                  ).pack(side=tk.LEFT)
 
-        def _leave(e, b=btn_tx, r=row, bg_=bg, on=is_on_air):
-            r.config(bg=bg_)
-            for w in r.winfo_children():
-                try: w.config(bg=bg_)
+        all_frames = [row, info, sched_frame, btn_area]
+
+        def _recolor(new_bg, widgets=all_frames):
+            for w in widgets:
+                try: w.config(bg=new_bg)
                 except Exception: pass
-            if not on:
+                for child in w.winfo_children():
+                    try: child.config(bg=new_bg)
+                    except Exception: pass
+
+        def _enter(e, b=btn_tx, on=is_on_air):
+            _recolor(C["surface"])
+            if on:
+                b.config(bg=C["danger"], fg="#fff")  # mantener rojo AL AIRE
+            else:
+                b.config(bg=C["surface"])
+            b.pack(side=tk.LEFT, padx=(0, 4))
+
+        def _leave(e, b=btn_tx, bg_=bg, on=is_on_air):
+            _recolor(bg_)
+            if on:
+                b.config(bg=C["danger"], fg="#fff")  # restaurar rojo AL AIRE
+            else:
                 b.pack_forget()
 
         for w in [row, info, sched_frame]:
@@ -264,8 +341,7 @@ class ViewProgramacion(tk.Frame):
 
         if not self._schedule:
             tk.Label(self._tl_inner,
-                     text="Sin eventos programados.\n"
-                          "Presiona ＋ Programar Evento para comenzar.",
+                     text="Sin eventos programados.",
                      font=FONTS["body"], bg=C["bg"],
                      fg=C["text3"]).pack(pady=40)
             return
@@ -381,7 +457,7 @@ class ViewProgramacion(tk.Frame):
         card.bind("<Button-1>",
                   lambda e, eid=ev["id"]: self._select_ev(eid))
 
-        # Botón eliminar horario
+        # Botones editar / eliminar
         tk.Button(card, text="✕",
                   font=FONTS["small"], bg=card_bg, fg=C["text3"],
                   relief="flat", bd=0, padx=4, cursor="hand2",
@@ -389,6 +465,13 @@ class ViewProgramacion(tk.Frame):
                   activebackground=card_bg,
                   command=lambda sid=sched["id"]: self._del_sched(sid)
                   ).pack(side=tk.RIGHT)
+        tk.Button(card, text="✏",
+                  font=("Segoe UI Emoji", 11), bg=card_bg, fg=C["text2"],
+                  relief="flat", bd=0, padx=4, cursor="hand2",
+                  activeforeground=C["accent"],
+                  activebackground=card_bg,
+                  command=lambda eid=ev["id"]: self._open_prog_modal(eid)
+                  ).pack(side=tk.RIGHT, padx=(0, 2))
 
     # ── Editor inline ─────────────────────────────────────────────────────────
     def _select_ev(self, ev_id: int) -> None:
@@ -404,6 +487,9 @@ class ViewProgramacion(tk.Frame):
         self._sched_date.insert(0, sched["fecha"] if sched
                                 else date.today().isoformat())
         self._sched_time.insert(0, sched["hora"] if sched else "08:00")
+        self._sched_rec.set(
+            sched["recurrencia"] if sched and sched["recurrencia"]
+            else "ninguna")
         self._sched_form.pack(fill=tk.X)
         self._update_preview()
 
@@ -435,7 +521,8 @@ class ViewProgramacion(tk.Frame):
             messagebox.showerror("Formato inválido",
                 "Fecha: YYYY-MM-DD  Hora: HH:MM", parent=self)
             return
-        db.insert_programacion(self._selected_ev, d, t)
+        rec = self._sched_rec.get() or "ninguna"
+        db.insert_programacion(self._selected_ev, d, t, rec)
         self._cancel_sched()
         self.load_data()
 
@@ -454,10 +541,14 @@ class ViewProgramacion(tk.Frame):
                 db.delete_programacion(s["id"])
             self.load_data()
 
-    def _open_prog_modal(self) -> None:
+    def _open_prog_modal(self, evento_id: int = None) -> None:
         from forms.prog_form import ProgramarForm
+        sched = next((s for s in self._schedule
+                      if s["evento_id"] == evento_id), None) if evento_id else None
         ProgramarForm(self, self._all_eventos,
-                      on_saved=self.load_data)
+                      on_saved=self.load_data,
+                      evento_id=evento_id,
+                      sched=dict(sched) if sched else None)
 
     # ── Stats ─────────────────────────────────────────────────────────────────
     def _update_stats(self) -> None:

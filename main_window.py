@@ -60,6 +60,8 @@ class MainWindow(tk.Tk):
 
         self._build()
         self._center()
+        self._sched_fired: set[int] = set()   # ids ya disparados en este minuto
+        self._check_schedule()
 
     # ── Build ─────────────────────────────────────────────────────────────────
     def _build(self) -> None:
@@ -84,12 +86,24 @@ class MainWindow(tk.Tk):
         tk.Label(hf, text="HAMNA Desktop",
                  font=FONTS["h1"], bg=C["header"],
                  fg=C["text"]).pack(side=tk.LEFT)
-        tk.Label(hf, text="Sistema de Gestión de Audio para Radiodifusión",
+        tk.Label(hf, text="Amateur Radio Net Automation System",
                  font=FONTS["small"], bg=C["header"],
                  fg=C["text2"]).pack(side=tk.LEFT, padx=(10, 0))
-        HButton(hf, "⚙  Ajustes",
-                command=lambda: self._switch_tab("settings"),
-                variant="ghost").pack(side=tk.RIGHT, padx=16)
+
+        # Logo FMRE A.C. al lado derecho
+        try:
+            from PIL import Image, ImageTk
+            from pathlib import Path
+            logo_path = Path(__file__).parent / "media" / "fmre_logo.png"
+            if logo_path.is_file():
+                img = Image.open(logo_path).convert("RGBA")
+                img = img.resize((40, 40), Image.LANCZOS)
+                self._fmre_img = ImageTk.PhotoImage(img)
+                tk.Label(hf, image=self._fmre_img,
+                         bg=C["header"]).pack(side=tk.RIGHT, padx=(0, 16))
+        except Exception:
+            pass
+
         tk.Frame(self, bg=C["border"], height=1).pack(fill=tk.X)
 
     def _build_nav(self) -> None:
@@ -192,10 +206,105 @@ class MainWindow(tk.Tk):
         self._status_lbl = tk.Label(sb, text="Listo",
             font=FONTS["small"], bg=C["surface"], fg=C["text2"])
         self._status_lbl.pack(side=tk.LEFT, padx=12)
-        tk.Label(sb,
-                 text="HAMNA Desktop v1.0.0  |  Python 3.13  |  Tkinter",
+
+        tk.Label(sb, text="HAMNA Desktop v1.0.0  |  by Radio Club Guadiana A.C.",
                  font=FONTS["small"], bg=C["surface"],
-                 fg=C["text3"]).pack(side=tk.RIGHT, padx=12)
+                 fg=C["text3"]).pack(side=tk.RIGHT, padx=(0, 12))
+
+        tk.Label(sb, text="|", font=FONTS["small"],
+                 bg=C["surface"], fg=C["border"]).pack(side=tk.RIGHT, padx=4)
+
+        self._lbl_utc = tk.Label(sb, text="", font=FONTS["small"],
+                                  bg=C["surface"], fg=C["text3"])
+        self._lbl_utc.pack(side=tk.RIGHT)
+
+        tk.Label(sb, text="UTC:", font=FONTS["small"],
+                 bg=C["surface"], fg=C["text3"]).pack(side=tk.RIGHT, padx=(8, 2))
+
+        tk.Label(sb, text="|", font=FONTS["small"],
+                 bg=C["surface"], fg=C["border"]).pack(side=tk.RIGHT, padx=4)
+
+        self._lbl_local = tk.Label(sb, text="", font=FONTS["small"],
+                                    bg=C["surface"], fg=C["text2"])
+        self._lbl_local.pack(side=tk.RIGHT)
+
+        tk.Label(sb, text="Local:", font=FONTS["small"],
+                 bg=C["surface"], fg=C["text3"]).pack(side=tk.RIGHT, padx=(8, 2))
+
+        self._tick_clock()
+
+    def _tick_clock(self) -> None:
+        from datetime import datetime, timezone
+        now_local = datetime.now()
+        now_utc   = datetime.now(timezone.utc)
+        self._lbl_local.config(text=now_local.strftime("%Y-%m-%d  %H:%M:%S"))
+        self._lbl_utc.config(  text=now_utc.strftime(  "%Y-%m-%d  %H:%M:%S"))
+        self.after(1000, self._tick_clock)
+
+    def _check_schedule(self) -> None:
+        """Revisa cada 15 s si hay un evento programado para iniciar ahora."""
+        from datetime import datetime
+        now   = datetime.now()
+        today = now.strftime("%Y-%m-%d")
+        hhmm  = now.strftime("%H:%M")
+        dow   = now.weekday()          # 0=lun … 6=dom
+
+        try:
+            schedule = db.get_all_programacion()
+        except Exception as e:
+            log.error("Error leyendo programacion: %s", e)
+            self.after(15_000, self._check_schedule)
+            return
+
+        # Limpiar disparos de minutos anteriores
+        current_min_keys = {
+            (r["id"], today, hhmm) for r in schedule
+        }
+        self._sched_fired = {k for k in self._sched_fired
+                             if k in current_min_keys}
+
+        for row in schedule:
+            rec   = (row["recurrencia"] or "ninguna").lower()
+            fecha = row["fecha"] or ""
+            hora  = row["hora"]  or ""
+
+            # ¿Corresponde hoy?
+            if rec == "ninguna":
+                if fecha != today:
+                    continue
+            elif rec == "diaria":
+                pass  # siempre aplica
+            elif rec == "semanal":
+                # mismo día de la semana que la fecha original
+                try:
+                    orig_dow = datetime.strptime(fecha, "%Y-%m-%d").weekday()
+                    if dow != orig_dow:
+                        continue
+                except ValueError:
+                    continue
+            elif rec == "lun-vie":
+                if dow > 4:   # sab=5, dom=6
+                    continue
+            else:
+                continue
+
+            # ¿Coincide el HH:MM?
+            if hora[:5] != hhmm:
+                continue
+
+            fire_key = (row["id"], today, hhmm)
+            if fire_key in self._sched_fired:
+                continue   # ya lo disparamos este minuto
+
+            self._sched_fired.add(fire_key)
+            ev_id = row["evento_id"]
+            log.info("Scheduler: iniciando evento id=%d '%s' a las %s",
+                     ev_id, row["evento_nombre"], hhmm)
+            # No iniciar si ya está transmitiendo el mismo evento
+            if not self._tx_playing or self._tx_evento_id != ev_id:
+                self._start_transmision(ev_id)
+
+        self.after(15_000, self._check_schedule)
 
     # ── Navegación ────────────────────────────────────────────────────────────
     def _switch_tab(self, key: str) -> None:
@@ -262,12 +371,23 @@ class MainWindow(tk.Tk):
             self._play_current_section()
             self._tx_tick()
 
-        # Actualizar vistas
+        # Actualizar vistas y NP bar inmediatamente (sin esperar _tx_tick)
         self._views["eventos"].update_on_air(evento_id)
         self._views["prog"].update_on_air(evento_id)
         ev = next((e for e in db.get_all_eventos()
                    if e["id"] == evento_id), None)
         name = ev["nombre"] if ev else str(evento_id)
+        self._np.set_on_air(
+            evento_nombre  = name,
+            seccion_nombre = secs[0]["nombre"] if secs else "",
+            elapsed        = 0.0,
+            total          = self._tx_total_dur,
+            cur_sec        = 0,
+            num_secs       = len(secs),
+            sec_names      = [s["nombre"] for s in secs],
+            sec_elapsed    = 0.0,
+            sec_total      = secs[0]["duracion"] if secs else 0.0,
+        )
         self._set_status(f"📡 Transmitiendo: {name}")
 
     def _play_current_section(self) -> None:
@@ -283,27 +403,29 @@ class MainWindow(tk.Tk):
                 )
 
     def _on_sec_audio_finished(self) -> None:
-        """Llamado por el reproductor cuando un archivo termina.
-        Solo avanza si la sección no tiene duración conocida (duracion<=0),
-        porque si la tiene, el tick por tiempo ya lo maneja."""
+        """Llamado por el reproductor cuando un archivo termina naturalmente.
+        Siempre avanza a la siguiente sección: PTT OFF → gap → PTT ON → siguiente."""
         if not self._tx_playing or self._tx_stop_flag:
             return
-        cur_sec = (self._tx_secciones[self._tx_cur_sec]
-                   if self._tx_cur_sec < len(self._tx_secciones) else None)
-        if cur_sec and cur_sec["duracion"] <= 0:
-            self._advance_section()
+        self._advance_section()
 
     def _advance_section(self) -> None:
         """Avanza a la siguiente sección con pausa breve + PTT OFF entre ellas."""
+        # No interrumpir si la pausa automática está activa o ya hay un gap en curso
+        if self._tx_pause_state in ("pausing", "paused", "section_gap"):
+            log.debug("_advance_section ignorado — pause_state=%s", self._tx_pause_state)
+            return
         if self._tx_cur_sec < len(self._tx_secciones) - 1:
-            self._tx_cur_sec     += 1
-            self._tx_sec_elapsed  = 0.0
-            self._tx_pause_state  = "section_gap"
+            self._tx_cur_sec      += 1
+            self._tx_sec_elapsed   = 0.0
+            self._tx_seg_elapsed   = 0.0   # reiniciar contador de pausa para la nueva sección
+            self._tx_alert_played  = False
+            self._tx_pause_state   = "section_gap"
             # PTT OFF durante el intervalo entre secciones
             self.ptt.ptt_off()
             self._np.set_ptt_state(False)
             self._views["eventos"].mark_active_section(self._tx_cur_sec)
-            gap_ms = int(float(self.cfg.get("section_gap_secs", 2)) * 1000)
+            gap_ms = int(float(self.cfg.get("pause_duration", 10)) * 1000)
             self.after(gap_ms, self._start_next_section)
         else:
             self._tx_stop()
@@ -361,9 +483,10 @@ class MainWindow(tk.Tk):
                 self._begin_pause_sequence()
                 return  # el ciclo se reanuda en _on_resume_announced
 
-            # Mostrar cuenta regresiva hasta pausa en NPBar
+            # Mostrar cuenta regresiva hasta pausa en NPBar (formato: "restante / total")
             secs_left = max(0.0, pause_tx_time - self._tx_seg_elapsed)
-            self._np.set_pause_info(str(int(secs_left)), None)
+            self._np.set_pause_info(
+                f"{int(secs_left)} / {int(pause_tx_time)}", None)
         # ────────────────────────────────────────────────────────────────────
 
         cur_sec = (self._tx_secciones[self._tx_cur_sec]
@@ -393,11 +516,15 @@ class MainWindow(tk.Tk):
             cur_sec        = self._tx_cur_sec,
             num_secs       = len(self._tx_secciones),
             sec_names      = sec_names,
+            sec_elapsed    = self._tx_sec_elapsed,
+            sec_total      = cur_sec["duracion"] if cur_sec else 0.0,
         )
         self._np.set_playing(self._tx_playing)
 
         # Avanzar sección por timer solo si tiene duración conocida (>0)
-        if cur_sec and cur_sec["duracion"] > 0 \
+        # y no hay una secuencia de pausa activa
+        if self._tx_pause_state == "tx" \
+                and cur_sec and cur_sec["duracion"] > 0 \
                 and self._tx_sec_elapsed >= cur_sec["duracion"]:
             self._advance_section()
             if self._tx_stop_flag:
@@ -410,10 +537,18 @@ class MainWindow(tk.Tk):
         self._tx_playing = False
         self._player.pause()
         self._np.set_playing(False)
+        try:
+            ok, msg = self.ptt.ptt_off()
+            log.info("PTT OFF (pausa manual) — ok=%s msg=%s", ok, msg)
+        except Exception as e:
+            log.error("Error enviando PTT OFF en pausa: %s", e)
+        self._np.set_ptt_state(False)
         self._set_status("En pausa")
 
     def _tx_resume(self) -> None:
         self._tx_playing = True
+        self.ptt.ptt_on()
+        self._np.set_ptt_state(True)
         self._player.resume()
         self._np.set_playing(True)
         self._tx_tick()
@@ -514,6 +649,11 @@ class MainWindow(tk.Tk):
         """Tras el anuncio de pausa: PTT OFF y comenzar cuenta regresiva."""
         if self._tx_stop_flag:
             return
+        # Si la secuencia de pausa fue interrumpida (p.ej. por avance de sección),
+        # no ejecutar PTT OFF ni iniciar la espera.
+        if self._tx_pause_state != "pausing":
+            log.debug("_finish_pause_announcement ignorado — pause_state=%s", self._tx_pause_state)
+            return
         self._player.stop()  # detener anuncio, liberar MCI
         self.ptt.ptt_off()
         self._np.set_ptt_state(False)
@@ -578,6 +718,10 @@ class MainWindow(tk.Tk):
         # Reanudar sección desde la posición en que se pausó
         cur_sec = (self._tx_secciones[self._tx_cur_sec]
                    if self._tx_cur_sec < len(self._tx_secciones) else None)
+        # Establecer estado tx ANTES de play para que la callback
+        # _on_sec_audio_finished no se encuentre en estado "resuming"
+        self._tx_pause_state  = "tx"
+        self._tx_seg_elapsed  = 0.0
         if cur_sec and cur_sec.get("ruta_archivo") and \
                 Path(cur_sec["ruta_archivo"]).is_file():
             cb = lambda: self.after(0, self._on_sec_audio_finished)
@@ -588,8 +732,6 @@ class MainWindow(tk.Tk):
             else:
                 self._tx_section_start_ms = 0
                 self._player.play(cur_sec["ruta_archivo"], on_finished=cb)
-        self._tx_pause_state  = "tx"
-        self._tx_seg_elapsed  = 0.0
         self._tx_alert_played = False
         self._tx_playing      = True
         self._np.set_playing(True)

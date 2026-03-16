@@ -144,17 +144,18 @@ class NPBar(tk.Frame):
         self._summary_frame.pack(fill=tk.X, padx=16)
         self._sum_labels: dict[str, tk.Label] = {}
         items = [
-            ("PTT",          "s_ptt"),
-            ("TRANSCURRIDO", "s_elapsed"),
-            ("RESTANTE",     "s_remain"),
-            ("TOTAL EVENTO", "s_total"),
-            ("SECCIÓN",      "s_sec_n"),
-            ("DE SECCIONES", "s_sec_of"),
-            ("FIN ESTIMADO", "s_fin"),
-            ("HASTA PAUSA",  "s_until_pause"),
-            ("EN PAUSA",     "s_pause_remain"),
+            ("PTT",           "s_ptt",          ""),
+            ("TRANSCURRIDO",  "s_elapsed",       "m:ss"),
+            ("RESTANTE",      "s_remain",        "m:ss"),
+            ("RESTANTE SEC",  "s_sec_remain",    "seg"),
+            ("TOTAL EVENTO",  "s_total",         "m:ss"),
+            ("SECCIÓN",       "s_sec_n",         "#"),
+            ("DE SECCIONES",  "s_sec_of",        "#"),
+            ("FIN ESTIMADO",  "s_fin",           "hh:mm"),
+            ("HASTA PAUSA",   "s_until_pause",   "seg"),
+            ("EN PAUSA",      "s_pause_remain",  "seg"),
         ]
-        for i, (lbl, key) in enumerate(items):
+        for i, (lbl, key, unit) in enumerate(items):
             if i:
                 tk.Frame(self._summary_frame, bg=C["border"], width=1).pack(
                     side=tk.LEFT, fill=tk.Y, padx=10)
@@ -164,6 +165,8 @@ class NPBar(tk.Frame):
                 vfg = C["text3"]
             elif key == "s_sec_n":
                 vfg = C["success"]
+            elif key == "s_sec_remain":
+                vfg = C["tts_fg"]
             elif key == "s_until_pause":
                 vfg = C["warning_h"]
             elif key == "s_pause_remain":
@@ -173,7 +176,8 @@ class NPBar(tk.Frame):
             val_lbl = tk.Label(f, text="—", font=FONTS["h3"],
                                 bg=C["bg"], fg=vfg)
             val_lbl.pack()
-            tk.Label(f, text=lbl, font=FONTS["mono_sm"],
+            lbl_text = f"{lbl}  {unit}" if unit else lbl
+            tk.Label(f, text=lbl_text, font=FONTS["mono_sm"],
                      bg=C["bg"], fg=C["text3"]).pack()
             self._sum_labels[key] = val_lbl
 
@@ -182,7 +186,8 @@ class NPBar(tk.Frame):
     # ── API Pública ───────────────────────────────────────────────────────────
     def set_on_air(self, evento_nombre: str, seccion_nombre: str,
                    elapsed: float, total: float, cur_sec: int,
-                   num_secs: int, sec_names: list[str]) -> None:
+                   num_secs: int, sec_names: list[str],
+                   sec_elapsed: float = 0.0, sec_total: float = 0.0) -> None:
         self._playing   = True
         self._total_dur = total
         self._num_secs  = num_secs
@@ -215,8 +220,11 @@ class NPBar(tk.Frame):
 
         # Resumen
         remaining = max(0, total - elapsed)
+        sec_remaining = max(0, sec_total - sec_elapsed) if sec_total > 0 else 0.0
         self._sum_labels["s_elapsed"].config(text=self._fmt(elapsed))
         self._sum_labels["s_remain"].config(text=self._fmt(remaining))
+        self._sum_labels["s_sec_remain"].config(
+            text=f"{int(sec_remaining)} / {int(sec_total)}" if sec_total > 0 else "—")
         self._sum_labels["s_total"].config(text=self._fmt(total))
         self._sum_labels["s_sec_n"].config(text=str(cur_sec + 1))
         self._sum_labels["s_sec_of"].config(text=str(num_secs))
