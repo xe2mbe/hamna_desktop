@@ -88,9 +88,24 @@ class EventoForm(HDialog):
 
         tk.Frame(self, bg=C["border"], height=1).pack(fill=tk.X)
 
+        # ── Footer (se empaca ANTES que el canvas para reservar su espacio) ────
+        tk.Frame(self, bg=C["border"], height=1).pack(fill=tk.X, side=tk.BOTTOM)
+        footer = tk.Frame(self, bg=C["bg"], pady=14)
+        footer.pack(fill=tk.X, side=tk.BOTTOM)
+        footer.columnconfigure(0, weight=1)
+        inner = tk.Frame(footer, bg=C["bg"])
+        inner.grid(row=0, column=0)
+        HButton(inner, "Cancelar", command=self.destroy,
+                variant="muted").pack(side=tk.LEFT, padx=6)
+        HButton(inner, "Guardar evento", command=self._save,
+                variant="success").pack(side=tk.LEFT, padx=6)
+
         # ── Lista de secciones pendientes ─────────────────────────────────────
-        sec_sb = ttk.Scrollbar(self, orient="vertical")
-        self._sec_canvas = tk.Canvas(self, bg=C["bg"], highlightthickness=0,
+        sec_area = tk.Frame(self, bg=C["bg"])
+        sec_area.pack(fill=tk.BOTH, expand=True)
+
+        sec_sb = ttk.Scrollbar(sec_area, orient="vertical")
+        self._sec_canvas = tk.Canvas(sec_area, bg=C["bg"], highlightthickness=0,
                                       yscrollcommand=sec_sb.set)
         sec_sb.config(command=self._sec_canvas.yview)
         self._sec_inner = tk.Frame(self._sec_canvas, bg=C["bg"])
@@ -99,21 +114,10 @@ class EventoForm(HDialog):
                 scrollregion=self._sec_canvas.bbox("all")))
         self._sec_canvas.create_window((0, 0), window=self._sec_inner,
                                         anchor="nw")
-        self._sec_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         sec_sb.pack(side=tk.RIGHT, fill=tk.Y)
+        self._sec_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 
         self._render_pending()
-
-        # ── Footer ────────────────────────────────────────────────────────────
-        tk.Frame(self, bg=C["border"], height=1).pack(fill=tk.X, side=tk.BOTTOM)
-        footer = tk.Frame(self, bg=C["bg"], pady=14)
-        footer.pack(fill=tk.X, side=tk.BOTTOM)
-        inner = tk.Frame(footer, bg=C["bg"])
-        inner.pack(anchor="center")
-        HButton(inner, "Cancelar", command=self.destroy,
-                variant="muted").pack(side=tk.LEFT, padx=6)
-        HButton(inner, "Guardar evento", command=self._save,
-                variant="success").pack(side=tk.LEFT, padx=6)
 
     # ── Render lista secciones ─────────────────────────────────────────────────
     def _render_pending(self) -> None:
@@ -310,8 +314,9 @@ class _BibliotecaPicker(HDialog):
         tk.Frame(self, bg=C["border"], height=1).pack(fill=tk.X, side=tk.BOTTOM)
         footer = tk.Frame(self, bg=C["bg"], pady=12)
         footer.pack(fill=tk.X, side=tk.BOTTOM)
+        footer.columnconfigure(0, weight=1)
         inner_f = tk.Frame(footer, bg=C["bg"])
-        inner_f.pack(anchor="center")
+        inner_f.grid(row=0, column=0)
         HButton(inner_f, "Cancelar",
                 command=self.destroy, variant="muted").pack(side=tk.LEFT, padx=6)
         HButton(inner_f, "Agregar al evento",

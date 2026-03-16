@@ -48,34 +48,41 @@ class ViewProgramacion(tk.Frame):
         stats = tk.Frame(self, bg=C["bg"], padx=14, pady=8)
         stats.pack(fill=tk.X)
         self._stat_vars = {}
+        _stat_styles = {
+            "total":  ("#1e3a5f", "#60a5fa", "#3b82f6"),   # bg, num, label
+            "hoy":    ("#1a3320", "#34d399", "#10b981"),
+            "semana": ("#2d1f00", "#fbbf24", "#f59e0b"),
+            "pend":   ("#3b0f0f", "#f87171", "#ef4444"),
+        }
         for key, lbl in [("total",   "PROGRAMADOS"),
                           ("hoy",    "HOY"),
                           ("semana", "ESTA SEMANA"),
                           ("pend",   "SIN PROGRAMAR")]:
-            f = tk.Frame(stats, bg=C["surface2"], padx=14, pady=10)
+            bg_c, num_c, lbl_c = _stat_styles[key]
+            f = tk.Frame(stats, bg=bg_c, padx=14, pady=10)
             f.pack(side=tk.LEFT, padx=(0, 8), ipadx=6, fill=tk.Y)
             v = tk.StringVar(value="0")
             self._stat_vars[key] = v
             tk.Label(f, textvariable=v, font=FONTS["h2"],
-                     bg=C["surface2"], fg=C["text"]).pack()
+                     bg=bg_c, fg=num_c).pack()
             tk.Label(f, text=lbl, font=FONTS["badge"],
-                     bg=C["surface2"], fg=C["text3"]).pack()
+                     bg=bg_c, fg=lbl_c).pack()
 
         # ── Relojes ───────────────────────────────────────────────────────────
-        clocks = tk.Frame(stats, bg=C["surface2"], padx=16, pady=8)
+        clocks = tk.Frame(stats, bg="#142035", padx=16, pady=8)
         clocks.pack(side=tk.LEFT, padx=(16, 0), fill=tk.Y)
 
         # Local
         tk.Label(clocks, text="LOCAL", font=FONTS["badge"],
-                 bg=C["surface2"], fg=C["text3"]).grid(
+                 bg="#142035", fg="#818cf8").grid(
             row=0, column=0, sticky="w")
         self._lbl_local = tk.Label(clocks, text="",
                                     font=("Consolas", 18, "bold"),
-                                    bg=C["surface2"], fg=C["text"])
+                                    bg="#142035", fg="#c7d2fe")
         self._lbl_local.grid(row=1, column=0, sticky="w")
         self._lbl_local_date = tk.Label(clocks, text="",
                                          font=FONTS["small"],
-                                         bg=C["surface2"], fg=C["text2"])
+                                         bg="#142035", fg="#818cf8")
         self._lbl_local_date.grid(row=2, column=0, sticky="w")
 
         # Separador vertical
@@ -84,15 +91,15 @@ class ViewProgramacion(tk.Frame):
 
         # UTC
         tk.Label(clocks, text="UTC", font=FONTS["badge"],
-                 bg=C["surface2"], fg=C["text3"]).grid(
+                 bg="#142035", fg="#34d399").grid(
             row=0, column=2, sticky="w")
         self._lbl_utc = tk.Label(clocks, text="",
                                   font=("Consolas", 18, "bold"),
-                                  bg=C["surface2"], fg=C["accent"])
+                                  bg="#142035", fg="#6ee7b7")
         self._lbl_utc.grid(row=1, column=2, sticky="w")
         self._lbl_utc_date = tk.Label(clocks, text="",
                                        font=FONTS["small"],
-                                       bg=C["surface2"], fg=C["text2"])
+                                       bg="#142035", fg="#34d399")
         self._lbl_utc_date.grid(row=2, column=2, sticky="w")
 
         self._tick_clock()
@@ -108,9 +115,10 @@ class ViewProgramacion(tk.Frame):
         lp = tk.Frame(paned, bg=C["bg"])
         paned.add(lp, minsize=180, width=290, stretch="never")
 
-        tk.Label(lp, text="EVENTOS", font=FONTS["badge"],
-                 bg=C["surface2"], fg=C["text3"],
-                 padx=12, pady=6).pack(fill=tk.X)
+        lh = tk.Frame(lp, bg=C["surface2"], padx=14, pady=8)
+        lh.pack(fill=tk.X)
+        tk.Label(lh, text="EVENTOS", font=FONTS["h3"],
+                 bg=C["surface2"], fg=C["text"]).pack(side=tk.LEFT)
         tk.Frame(lp, bg=C["border"], height=1).pack(fill=tk.X)
 
         ev_wrap = tk.Frame(lp, bg=C["bg"])
@@ -125,9 +133,17 @@ class ViewProgramacion(tk.Frame):
                 scrollregion=self._ev_canvas.bbox("all")))
         self._ev_canvas.create_window((0, 0), window=self._ev_inner,
                                        anchor="nw")
-        self._ev_canvas.configure(yscrollcommand=ev_sb.set)
+
+        def _ev_yscroll(first, last):
+            """Muestra el scrollbar solo cuando el contenido no cabe."""
+            if float(first) <= 0.0 and float(last) >= 1.0:
+                ev_sb.pack_forget()
+            else:
+                ev_sb.pack(side=tk.RIGHT, fill=tk.Y)
+            ev_sb.set(first, last)
+
+        self._ev_canvas.configure(yscrollcommand=_ev_yscroll)
         self._ev_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        ev_sb.pack(side=tk.RIGHT, fill=tk.Y)
 
         # Panel derecho — timeline + editor
         rp = tk.Frame(paned, bg=C["bg"])
@@ -255,11 +271,12 @@ class ViewProgramacion(tk.Frame):
 
         info = tk.Frame(row, bg=bg)
         info.pack(side=tk.LEFT, fill=tk.X, expand=True)
-        fg = C["danger"] if is_on_air else C["text"]
+        fg_main = C["header_fg"] if is_on_air else C["text"]
+        fg_sec  = C["header_fg"] if is_on_air else C["text3"]
         tk.Label(info, text=ev["nombre"], font=FONTS["body"],
-                 bg=bg, fg=fg, anchor="w").pack(anchor="w")
+                 bg=bg, fg=fg_main, anchor="w").pack(anchor="w")
         tk.Label(info, text=ev["tipo"] or "—", font=FONTS["small"],
-                 bg=bg, fg=C["text3"]).pack(anchor="w")
+                 bg=bg, fg=fg_sec).pack(anchor="w")
 
         sched_frame = tk.Frame(row, bg=bg)
         sched_frame.pack(side=tk.RIGHT, padx=(0, 4))
@@ -270,11 +287,11 @@ class ViewProgramacion(tk.Frame):
             tk.Label(sched_frame,
                      text=self._fmt_date(sched["fecha"]),
                      font=FONTS["small"], bg=bg,
-                     fg=C["text3"]).pack(anchor="e")
+                     fg=fg_sec).pack(anchor="e")
         else:
             tk.Label(sched_frame, text="Sin horario",
                      font=FONTS["small"], bg=bg,
-                     fg=C["text3"]).pack(anchor="e")
+                     fg=fg_sec).pack(anchor="e")
 
         # Contenedor fijo para botones de acción (evita que el layout se mueva)
         btn_area = tk.Frame(row, bg=bg)
@@ -295,7 +312,7 @@ class ViewProgramacion(tk.Frame):
 
         # Botón 📅 programar (siempre visible, a la derecha de Transmitir)
         tk.Button(btn_area, text="📅", font=FONTS["body"],
-                  bg=bg, fg=C["text3"],
+                  bg=bg, fg=fg_main,
                   relief="flat", bd=0, padx=4, cursor="hand2",
                   activebackground=C["surface"],
                   activeforeground=C["accent"],
@@ -415,9 +432,10 @@ class ViewProgramacion(tk.Frame):
 
         info = tk.Frame(card, bg=card_bg, padx=8)
         info.pack(side=tk.LEFT, fill=tk.X, expand=True)
-        fg = C["danger"] if is_on_air else C["text"]
+        fg_main = C["header_fg"] if is_on_air else C["text"]
+        fg_sec  = C["header_fg"] if is_on_air else C["text3"]
         tk.Label(info, text=ev["nombre"], font=FONTS["body"],
-                 bg=card_bg, fg=fg).pack(anchor="w")
+                 bg=card_bg, fg=fg_main).pack(anchor="w")
 
         meta = tk.Frame(info, bg=card_bg)
         meta.pack(anchor="w")
@@ -427,7 +445,7 @@ class ViewProgramacion(tk.Frame):
                              f"{len(secs)} secc.  ·  "
                              f"{self._fmt_dur(dur)}",
                  font=FONTS["small"], bg=card_bg,
-                 fg=C["text2"]).pack(side=tk.LEFT)
+                 fg=fg_sec).pack(side=tk.LEFT)
 
         if is_on_air:
             tk.Label(card, text="● AL AIRE",

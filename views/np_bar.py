@@ -2,9 +2,10 @@
 HAMNA Desktop — Barra de Transmisión (Now Playing Bar)
 Widget permanente en la parte inferior de la ventana principal.
 """
+import datetime
 import tkinter as tk
 from tkinter import ttk
-from ui_theme import C, FONTS, HButton, HSlider, apply_theme
+from ui_theme import C, FONTS, HSlider
 
 
 class NPBar(tk.Frame):
@@ -28,11 +29,8 @@ class NPBar(tk.Frame):
         self._on_volume   = on_volume
         self._on_jump_sec = on_jump_sec
 
-        self._playing     = False
-        self._total_dur   = 0
-        self._num_secs    = 0
-        self._cur_sec_idx = 0
-        self._chip_btns   : list[tk.Button] = []
+        self._playing   = False
+        self._chip_btns : list[tk.Button] = []
 
         self._build()
 
@@ -41,37 +39,6 @@ class NPBar(tk.Frame):
         # Borde superior (cambia a rojo al aire)
         self._top_border = tk.Frame(self, bg=C["border"], height=1)
         self._top_border.pack(fill=tk.X)
-
-        # Strip: indicador + breadcrumb
-        strip = tk.Frame(self, bg=C["header"], height=26)
-        strip.pack(fill=tk.X)
-        strip.pack_propagate(False)
-
-        self._dot = tk.Label(strip, text="●", font=("Segoe UI", 8),
-                              bg=C["header"], fg=C["text3"])
-        self._dot.pack(side=tk.LEFT, padx=(14, 4))
-
-        self._lbl_status = tk.Label(strip, text="NO SE TRANSMITE",
-            font=FONTS["mono_sm"], bg=C["header"], fg=C["text3"])
-        self._lbl_status.pack(side=tk.LEFT)
-
-        self._lbl_ev = tk.Label(strip, text="", font=FONTS["small"],
-                                 bg=C["header"], fg=C["text"])
-        self._lbl_ev.pack(side=tk.LEFT, padx=(10, 0))
-
-        self._lbl_arr = tk.Label(strip, text="▸", font=FONTS["small"],
-                                  bg=C["header"], fg=C["text3"])
-        self._lbl_arr.pack(side=tk.LEFT, padx=3)
-        self._lbl_arr.pack_forget()
-
-        self._lbl_sec = tk.Label(strip, text="", font=FONTS["small"],
-                                  bg=C["header"], fg=C["text2"])
-        self._lbl_sec.pack(side=tk.LEFT)
-
-        self._hint = tk.Label(strip,
-            text="Selecciona un evento y presiona Transmitir",
-            font=FONTS["small"], bg=C["header"], fg=C["text3"])
-        self._hint.pack(side=tk.RIGHT, padx=14)
 
         # Barra de progreso
         prog_frame = tk.Frame(self, bg=C["bg"], pady=2)
@@ -90,8 +57,9 @@ class NPBar(tk.Frame):
             font=FONTS["mono_sm"], bg=C["bg"], fg=C["text3"], width=5)
         self._lbl_total.pack(side=tk.LEFT)
 
-        # Controles + chips
-        ctrl_frame = tk.Frame(self, bg=C["bg"])
+        # Controles + chips — height fijo para que ningún hijo expanda NPBar en horizontal
+        ctrl_frame = tk.Frame(self, bg=C["bg"], height=36)
+        ctrl_frame.pack_propagate(False)
         ctrl_frame.pack(fill=tk.X, padx=10, pady=(2, 0))
 
         def ctrl_btn(text, cmd, size=18):
@@ -125,61 +93,55 @@ class NPBar(tk.Frame):
             command=self._on_stop, highlightthickness=0, padx=4)
         self._btn_stop.pack(side=tk.LEFT)
 
-        # Chips frame
-        self._chips_frame = tk.Frame(ctrl_frame, bg=C["bg"])
-        self._chips_frame.pack(side=tk.LEFT, padx=(10, 0))
+        # Chips frame — ocupa el espacio sobrante pero NO puede expandir ctrl_frame
+        self._chips_frame = tk.Frame(ctrl_frame, bg=C["bg"], height=30)
+        self._chips_frame.pack_propagate(False)   # chips no empujan el frame hacia afuera
+        self._chips_frame.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(10, 0))
 
-        # Volumen
-        vol_frame = tk.Frame(ctrl_frame, bg=C["bg"])
-        vol_frame.pack(side=tk.RIGHT, padx=10)
-        tk.Label(vol_frame, text="🔊", font=("Segoe UI", 11),
-                 bg=C["bg"], fg=C["text3"]).pack(side=tk.LEFT)
+        # ── Separador entre controles y contadores ───────────────────────────────
+        tk.Frame(self, bg=C["border"], height=1).pack(fill=tk.X, padx=10)
+
+        # ── Sección de contadores — frame independiente con altura fija ──────────
+        counter_frame = tk.Frame(self, bg=C["bg"], height=68)
+        counter_frame.pack_propagate(False)
+        counter_frame.pack(fill=tk.X, padx=10, pady=(0, 4))
+
+        # Volumen — primero a la DERECHA para que siempre sea visible
+        vol_frame = tk.Frame(counter_frame, bg=C["bg"], padx=8)
+        vol_frame.pack(side=tk.RIGHT, fill=tk.Y)
+        tk.Label(vol_frame, text="🔊", font=("Segoe UI", 10),
+                 bg=C["bg"], fg=C["text3"]).pack(side=tk.LEFT, pady=(0, 2))
         self._vol_scale = HSlider(vol_frame, from_=0, to=100,
-            bg=C["bg"], command=self._vol_changed, width=110)
+            bg=C["bg"], command=self._vol_changed, width=100)
         self._vol_scale.set(85)
-        self._vol_scale.pack(side=tk.LEFT)
+        self._vol_scale.pack(side=tk.LEFT, pady=(0, 2))
 
-        # Resumen
-        self._summary_frame = tk.Frame(self, bg=C["bg"], pady=4)
-        self._summary_frame.pack(fill=tk.X, padx=16)
-        self._sum_labels: dict[str, tk.Label] = {}
-        items = [
-            ("PTT",           "s_ptt",          ""),
-            ("TRANSCURRIDO",  "s_elapsed",       "m:ss"),
-            ("RESTANTE",      "s_remain",        "m:ss"),
-            ("RESTANTE SEC",  "s_sec_remain",    "seg"),
-            ("TOTAL EVENTO",  "s_total",         "m:ss"),
-            ("SECCIÓN",       "s_sec_n",         "#"),
-            ("DE SECCIONES",  "s_sec_of",        "#"),
-            ("FIN ESTIMADO",  "s_fin",           "hh:mm"),
-            ("HASTA PAUSA",   "s_until_pause",   "seg"),
-            ("EN PAUSA",      "s_pause_remain",  "seg"),
+        tk.Frame(counter_frame, bg=C["border"], width=1).pack(
+            side=tk.RIGHT, fill=tk.Y, pady=4)
+
+        # Contadores — Canvas garantiza clipping duro en los bordes.
+        # Los Label normales en Windows pueden pintar fuera de sus bounds.
+        _col_defs = [
+            ("PTT",          "s_ptt",          "",       C["text3"]),
+            ("TRANSCURRIDO", "s_elapsed",       "m:ss",   C["text"]),
+            ("RESTANTE",     "s_remain",        "m:ss",   C["text"]),
+            ("REST. SEC",    "s_sec_remain",    "seg",    C["tts_fg"]),
+            ("TOTAL",        "s_total",         "m:ss",   C["text"]),
+            ("SECCIÓN",      "s_sec_n",         "#",      C["success"]),
+            ("SECCIONES",    "s_sec_of",        "#",      C["text"]),
+            ("FIN EST.",     "s_fin",           "hh:mm",  C["text"]),
+            ("HASTA PAUSA",  "s_until_pause",   "seg",    C["warning_h"]),
+            ("EN PAUSA",     "s_pause_remain",  "seg",    C["danger"]),
         ]
-        for i, (lbl, key, unit) in enumerate(items):
-            if i:
-                tk.Frame(self._summary_frame, bg=C["border"], width=1).pack(
-                    side=tk.LEFT, fill=tk.Y, padx=10)
-            f = tk.Frame(self._summary_frame, bg=C["bg"])
-            f.pack(side=tk.LEFT)
-            if key == "s_ptt":
-                vfg = C["text3"]
-            elif key == "s_sec_n":
-                vfg = C["success"]
-            elif key == "s_sec_remain":
-                vfg = C["tts_fg"]
-            elif key == "s_until_pause":
-                vfg = C["warning_h"]
-            elif key == "s_pause_remain":
-                vfg = C["danger"]
-            else:
-                vfg = C["text"]
-            val_lbl = tk.Label(f, text="—", font=FONTS["h3"],
-                                bg=C["bg"], fg=vfg)
-            val_lbl.pack()
-            lbl_text = f"{lbl}  {unit}" if unit else lbl
-            tk.Label(f, text=lbl_text, font=FONTS["mono_sm"],
-                     bg=C["bg"], fg=C["text3"]).pack()
-            self._sum_labels[key] = val_lbl
+        self._col_defs                        = _col_defs
+        self._counter_vals:   dict[str, str]  = {k: "—"    for _, k, _, _     in _col_defs}
+        self._counter_colors: dict[str, str]  = {k: color  for _, k, _, color in _col_defs}
+        self._canvas_val_ids: dict[str, int]  = {}
+
+        self._sum_canvas = tk.Canvas(counter_frame, bg=C["bg"],
+                                      highlightthickness=0, bd=0)
+        self._sum_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        self._sum_canvas.bind("<Configure>", self._draw_counters)
 
         self._set_enabled(False)
 
@@ -188,22 +150,10 @@ class NPBar(tk.Frame):
                    elapsed: float, total: float, cur_sec: int,
                    num_secs: int, sec_names: list[str],
                    sec_elapsed: float = 0.0, sec_total: float = 0.0) -> None:
-        self._playing   = True
-        self._total_dur = total
-        self._num_secs  = num_secs
-        self._cur_sec_idx = cur_sec
+        self._playing = True
 
-        # Top border rojo
+        # Top border rojo al aire
         self._top_border.config(bg=C["danger"])
-        self.config(bg=C["header"])
-        self._dot.config(fg=C["danger"], bg=C["header"])
-        self._lbl_status.config(text="AL AIRE", fg=C["danger"], bg=C["header"])
-
-        # Breadcrumb
-        self._lbl_ev.config(text=evento_nombre)
-        self._lbl_arr.pack(side=tk.LEFT, padx=3)
-        self._lbl_sec.config(text=seccion_nombre)
-        self._hint.pack_forget()
 
         # Progreso
         pct = (elapsed / total * 100) if total > 0 else 0
@@ -221,14 +171,14 @@ class NPBar(tk.Frame):
         # Resumen
         remaining = max(0, total - elapsed)
         sec_remaining = max(0, sec_total - sec_elapsed) if sec_total > 0 else 0.0
-        self._sum_labels["s_elapsed"].config(text=self._fmt(elapsed))
-        self._sum_labels["s_remain"].config(text=self._fmt(remaining))
-        self._sum_labels["s_sec_remain"].config(
-            text=f"{int(sec_remaining)} / {int(sec_total)}" if sec_total > 0 else "—")
-        self._sum_labels["s_total"].config(text=self._fmt(total))
-        self._sum_labels["s_sec_n"].config(text=str(cur_sec + 1))
-        self._sum_labels["s_sec_of"].config(text=str(num_secs))
-        self._sum_labels["s_fin"].config(text=self._fin_time(remaining))
+        self._set_counter("s_elapsed",    self._fmt(elapsed))
+        self._set_counter("s_remain",     self._fmt(remaining))
+        self._set_counter("s_sec_remain",
+            f"{int(sec_remaining)} / {int(sec_total)}" if sec_total > 0 else "—")
+        self._set_counter("s_total",      self._fmt(total))
+        self._set_counter("s_sec_n",      str(cur_sec + 1))
+        self._set_counter("s_sec_of",     str(num_secs))
+        self._set_counter("s_fin",        self._fin_time(remaining))
 
         self._set_enabled(True)
 
@@ -244,20 +194,11 @@ class NPBar(tk.Frame):
     def set_off_air(self) -> None:
         self._playing = False
         self._top_border.config(bg=C["border"])
-        self.config(bg=C["bg"])
-        self._dot.config(fg=C["text3"], bg=C["header"])
-        self._lbl_status.config(text="NO SE TRANSMITE", fg=C["text3"],
-                                  bg=C["header"])
-        self._lbl_ev.config(text="")
-        self._lbl_arr.pack_forget()
-        self._lbl_sec.config(text="")
-        self._hint.pack(side=tk.RIGHT, padx=14)
         self._progress["value"] = 0
         self._lbl_elapsed.config(text="0:00")
         self._lbl_total.config(text="0:00")
-        for lbl in self._sum_labels.values():
-            lbl.config(text="—")
-        self._sum_labels["s_ptt"].config(fg=C["text3"])
+        for _, key, _, orig_color in self._col_defs:
+            self._set_counter(key, "—", orig_color)
         self._btn_play.config(text="▶", bg=C["danger"],
                                activebackground=C["danger_h"])
         for w in self._chips_frame.winfo_children():
@@ -267,25 +208,65 @@ class NPBar(tk.Frame):
 
     def set_pause_info(self, until_pause: str | None,
                        pause_remain: str | None) -> None:
-        """Actualiza los contadores de pausa automática en el resumen.
-        Pasar None en cualquier argumento para mostrar '—'."""
-        self._sum_labels["s_until_pause"].config(
-            text=until_pause if until_pause is not None else "—")
-        self._sum_labels["s_pause_remain"].config(
-            text=pause_remain if pause_remain is not None else "—")
+        """Actualiza los contadores de pausa automática en el resumen."""
+        self._set_counter("s_until_pause",
+                          until_pause  if until_pause  is not None else "—")
+        self._set_counter("s_pause_remain",
+                          pause_remain if pause_remain is not None else "—")
 
     def set_ptt_state(self, on: bool) -> None:
         """Actualiza el indicador PTT en el resumen."""
         if on:
-            self._sum_labels["s_ptt"].config(text="ON",  fg=C["success"])
+            self._set_counter("s_ptt", "ON",  C["success"])
         else:
-            self._sum_labels["s_ptt"].config(text="OFF", fg=C["text3"])
+            self._set_counter("s_ptt", "OFF", C["text3"])
 
     # ── Internos ──────────────────────────────────────────────────────────────
+    def _draw_counters(self, event=None) -> None:
+        """Dibuja (o redibuja) el canvas de contadores desde cero."""
+        c = self._sum_canvas
+        w = c.winfo_width()
+        h = c.winfo_height()
+        if w <= 1 or h <= 1:
+            return
+        c.configure(scrollregion=(0, 0, w, h))
+        c.delete("all")
+        self._canvas_val_ids.clear()
+        n   = len(self._col_defs)
+        cw  = w / n
+        for i, (lbl, key, unit, color) in enumerate(self._col_defs):
+            cx = i * cw + cw / 2
+            if i > 0:
+                c.create_line(i * cw, h * 0.1, i * cw, h * 0.9,
+                              fill=C["border"], width=1)
+            tid = c.create_text(cx, h * 0.28,
+                                text=self._counter_vals.get(key, "—"),
+                                fill=self._counter_colors.get(key, C["text"]),
+                                font=("Consolas", 13, "bold"), anchor="center")
+            self._canvas_val_ids[key] = tid
+            c.create_text(cx, h * 0.68, text=lbl,
+                          fill=C["text3"], font=("Consolas", 9), anchor="center")
+            if unit:
+                c.create_text(cx, h * 0.90, text=unit,
+                              fill=C["text3"], font=("Consolas", 9), anchor="center")
+
+    def _set_counter(self, key: str, val: str, color: str = None) -> None:
+        """Actualiza el valor de un contador; redibuja sólo ese ítem del canvas."""
+        self._counter_vals[key] = val
+        if color is not None:
+            self._counter_colors[key] = color
+        tid = self._canvas_val_ids.get(key)
+        if tid:
+            kw: dict = {"text": val}
+            if color is not None:
+                kw["fill"] = color
+            self._sum_canvas.itemconfig(tid, **kw)
+
     def _update_chips(self, names: list[str], active: int) -> None:
         for w in self._chips_frame.winfo_children():
             w.destroy()
         self._chip_btns.clear()
+
         for i, name in enumerate(names):
             label = f"{i+1}. {name[:10]}{'…' if len(name) > 10 else ''}"
             if i < active:
@@ -294,12 +275,11 @@ class NPBar(tk.Frame):
                 bg, fg = C["audio_bg"], C["audio_fg"]
             else:
                 bg, fg = C["surface"], C["text2"]
-            idx = i  # captura
             b = tk.Button(self._chips_frame, text=label,
                           font=FONTS["mono_sm"], bg=bg, fg=fg,
                           relief="flat", bd=0, padx=6, pady=2,
                           cursor="hand2", activebackground=C["surface2"],
-                          command=lambda x=idx: self._on_jump_sec(x))
+                          command=lambda x=i: self._on_jump_sec(x))
             b.pack(side=tk.LEFT, padx=(0, 3))
             self._chip_btns.append(b)
 
@@ -332,6 +312,5 @@ class NPBar(tk.Frame):
 
     @staticmethod
     def _fin_time(remaining: float) -> str:
-        import datetime
         t = datetime.datetime.now() + datetime.timedelta(seconds=max(0, remaining))
         return t.strftime("%H:%M")

@@ -85,10 +85,10 @@ class MainWindow(tk.Tk):
                  bg=C["header"]).pack(side=tk.LEFT, padx=(16, 6))
         tk.Label(hf, text="HAMNA Desktop",
                  font=FONTS["h1"], bg=C["header"],
-                 fg=C["text"]).pack(side=tk.LEFT)
+                 fg=C.get("header_fg", C["text"])).pack(side=tk.LEFT)
         tk.Label(hf, text="Amateur Radio Net Automation System",
                  font=FONTS["small"], bg=C["header"],
-                 fg=C["text2"]).pack(side=tk.LEFT, padx=(10, 0))
+                 fg=C.get("header_fg", C["text2"])).pack(side=tk.LEFT, padx=(10, 0))
 
         # Logo FMRE A.C. al lado derecho
         try:
@@ -112,8 +112,9 @@ class MainWindow(tk.Tk):
         nav.pack_propagate(False)
         tk.Frame(self, bg=C["border"], height=1).pack(fill=tk.X)
 
-        self._nav_btns: dict[str, tk.Label] = {}
+        self._nav_btns: dict[str, tuple] = {}
         self._badge_vars: dict[str, tk.StringVar] = {}
+        self._active_tab: str = ""
 
         tabs_left = [
             ("secciones", "🎵  Secciones"),
@@ -123,31 +124,35 @@ class MainWindow(tk.Tk):
         tabs_right = [
             ("settings",  "⚙  Ajustes"),
         ]
-        for key, lbl in tabs_left:
+
+        def _sep(side=tk.LEFT):
+            tk.Frame(nav, bg=C["border"], width=1).pack(
+                side=side, fill=tk.Y, pady=5)
+
+        def _make_tab(key, lbl, side):
             f = tk.Frame(nav, bg=C["surface"])
-            f.pack(side=tk.LEFT)
+            f.pack(side=side)
             btn = tk.Label(f, text=lbl, font=FONTS["body"],
                            bg=C["surface"], fg=C["text2"],
-                           padx=16, pady=8, cursor="hand2")
+                           padx=16, pady=7, cursor="hand2")
             btn.pack(side=tk.LEFT)
-            btn.bind("<Button-1>",
-                     lambda e, k=key: self._switch_tab(k))
-            indicator = tk.Frame(f, bg=C["surface"], height=2)
+            btn.bind("<Button-1>", lambda _, k=key: self._switch_tab(k))
+            btn.bind("<Enter>",    lambda _, b=btn, k=key:
+                     b.config(fg=C["accent"] if self._active_tab == k else C["text"]))
+            btn.bind("<Leave>",    lambda _, b=btn, k=key:
+                     b.config(fg=C["accent"] if self._active_tab == k else C["text2"]))
+            indicator = tk.Frame(f, bg=C["surface"], height=3)
             indicator.pack(fill=tk.X)
             self._nav_btns[key] = (btn, indicator)
 
+        for i, (key, lbl) in enumerate(tabs_left):
+            if i > 0:
+                _sep(tk.LEFT)
+            _make_tab(key, lbl, tk.LEFT)
+
+        _sep(tk.RIGHT)           # separa Ajustes del grupo izquierdo
         for key, lbl in tabs_right:
-            f = tk.Frame(nav, bg=C["surface"])
-            f.pack(side=tk.RIGHT)
-            btn = tk.Label(f, text=lbl, font=FONTS["body"],
-                           bg=C["surface"], fg=C["text2"],
-                           padx=16, pady=8, cursor="hand2")
-            btn.pack(side=tk.LEFT)
-            btn.bind("<Button-1>",
-                     lambda e, k=key: self._switch_tab(k))
-            indicator = tk.Frame(f, bg=C["surface"], height=2)
-            indicator.pack(fill=tk.X)
-            self._nav_btns[key] = (btn, indicator)
+            _make_tab(key, lbl, tk.RIGHT)
 
         # Badge de programación
         bv = tk.StringVar(value="0")
@@ -308,13 +313,16 @@ class MainWindow(tk.Tk):
 
     # ── Navegación ────────────────────────────────────────────────────────────
     def _switch_tab(self, key: str) -> None:
+        self._active_tab = key
         for k, view in self._views.items():
             view.pack_forget()
         self._views[key].pack(fill=tk.BOTH, expand=True)
 
         for k, (btn, ind) in self._nav_btns.items():
             active = (k == key)
-            btn.config(fg=C["accent"] if active else C["text2"])
+            btn.config(
+                fg=C["accent"] if active else C["text2"],
+                font=(*FONTS["body"], "bold") if active else FONTS["body"])
             ind.config(bg=C["accent"] if active else C["surface"])
 
         if key == "prog":

@@ -48,15 +48,24 @@ class SeccionForm(HDialog):
             subtitle
         )
 
-        canvas = tk.Canvas(self, bg=C["bg"], highlightthickness=0)
-        sb = ttk.Scrollbar(self, orient="vertical", command=canvas.yview)
+        # Footer (se empaca ANTES que el canvas para que reserve su espacio)
+        tk.Frame(self, bg=C["border"], height=1).pack(fill=tk.X, side=tk.BOTTOM)
+        self._footer = tk.Frame(self, bg=C["bg"])
+        self._footer.pack(fill=tk.X, side=tk.BOTTOM)
+
+        # Área scrollable
+        scroll_area = tk.Frame(self, bg=C["bg"])
+        scroll_area.pack(fill=tk.BOTH, expand=True)
+
+        canvas = tk.Canvas(scroll_area, bg=C["bg"], highlightthickness=0)
+        sb = ttk.Scrollbar(scroll_area, orient="vertical", command=canvas.yview)
         self._body = tk.Frame(canvas, bg=C["bg"])
         self._body.bind("<Configure>",
             lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
         canvas.create_window((0, 0), window=self._body, anchor="nw")
         canvas.configure(yscrollcommand=sb.set)
-        canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         sb.pack(side=tk.RIGHT, fill=tk.Y)
+        canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 
         body = self._body
         body.columnconfigure(0, weight=1)
@@ -89,12 +98,6 @@ class SeccionForm(HDialog):
         self._dyn = tk.Frame(body, bg=C["bg"])
         self._dyn.pack(fill=tk.BOTH, expand=True, **pad, pady=(8, 0))
         self._dyn.columnconfigure(0, weight=1)
-
-        # Footer (botones centrados)
-        self._footer = tk.Frame(self, bg=C["bg"])
-        self._footer.pack(fill=tk.X, side=tk.BOTTOM)
-        tk.Frame(self, bg=C["border"], height=1).pack(
-            fill=tk.X, side=tk.BOTTOM)
 
     # ── Pre-llenado (edición) ─────────────────────────────────────────────────
     def _prefill(self) -> None:
@@ -339,8 +342,9 @@ class SeccionForm(HDialog):
         for w in self._footer.winfo_children():
             w.destroy()
         self._footer.config(pady=14)
+        self._footer.columnconfigure(0, weight=1)
         inner = tk.Frame(self._footer, bg=C["bg"])
-        inner.pack(anchor="center")
+        inner.grid(row=0, column=0)
         for text, variant, cmd in buttons:
             HButton(inner, text=text, command=cmd,
                     variant=variant).pack(side=tk.LEFT, padx=6)

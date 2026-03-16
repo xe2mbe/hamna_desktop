@@ -64,7 +64,7 @@ class ViewSecciones(tk.Frame):
                  bg=C["surface"], fg=C["text2"]).pack(side=tk.RIGHT, padx=(0, 2))
 
         # ── Tabla ──────────────────────────────────────────────────────────
-        area = tk.Frame(self, bg=C["bg"])
+        area = tk.Frame(self, bg=C["surface"])
         area.pack(fill=tk.BOTH, expand=True)
 
         sb = ttk.Scrollbar(area, orient="vertical")

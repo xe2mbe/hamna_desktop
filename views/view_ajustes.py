@@ -29,11 +29,11 @@ class ViewAjustes(tk.Frame):
 
     # ── Build layout ──────────────────────────────────────────────────────────
     def _build(self) -> None:
-        # Sidebar
-        sidebar = tk.Frame(self, bg=C["bg"], width=190)
+        # Sidebar — fondo más oscuro que el contenido para diferenciarlo
+        sidebar = tk.Frame(self, bg=C["header"], width=190)
         sidebar.pack(side=tk.LEFT, fill=tk.Y)
         sidebar.pack_propagate(False)
-        tk.Frame(self, bg=C["border"], width=1).pack(
+        tk.Frame(self, bg=C["border"], width=2).pack(
             side=tk.LEFT, fill=tk.Y)
 
         # Content
@@ -51,24 +51,29 @@ class ViewAjustes(tk.Frame):
             (t("nav.data"),         [("db",      t("nav.item.db")),
                                      ("logs",    t("nav.item.logs"))]),
         ]
+        # Sidebar siempre es oscuro en ambos temas — usar colores claros fijos
+        _SB_FG  = "#94a3b8"   # items normales  (claro sobre header oscuro)
+        _SB_FG3 = "#4a5a72"   # cabeceras de sección (ligeramente más sutil)
+        _SB_HOV = "#1e3a5f"   # hover (se adapta si header cambia)
+
         for section_lbl, items in sections:
             tk.Label(sidebar, text=section_lbl, font=FONTS["badge"],
-                     bg=C["bg"], fg=C["text3"],
-                     padx=16, pady=(10)).pack(fill=tk.X, anchor="w")
+                     bg=C["header"], fg=_SB_FG3,
+                     padx=16, pady=10).pack(fill=tk.X, anchor="w")
             for key, lbl in items:
                 btn = tk.Label(sidebar, text=lbl, font=FONTS["body"],
-                               bg=C["bg"], fg=C["text2"],
+                               bg=C["header"], fg=_SB_FG,
                                padx=16, pady=8, anchor="w",
                                cursor="hand2")
                 btn.pack(fill=tk.X)
                 btn.bind("<Button-1>", lambda e, k=key: self._show_panel(k))
                 btn.bind("<Enter>",
-                         lambda e, b=btn: b.config(bg=C["surface"]))
+                         lambda e, b=btn: b.config(bg=C["surface2"]))
                 btn.bind("<Leave>",
                          lambda e, b=btn, k=key:
                              b.config(bg=C["accent"] if
                                       self._active_panel == k
-                                      else C["bg"]))
+                                      else C["header"]))
                 self._nav_btns[key] = btn
 
         # Panels
@@ -86,12 +91,13 @@ class ViewAjustes(tk.Frame):
         self._build_general_panel()
 
     def _show_panel(self, key: str) -> None:
+        _SB_FG = "#94a3b8"
         for k, f in self._panels.items():
             f.pack_forget()
         self._panels[key].pack(fill=tk.BOTH, expand=True)
         for k, btn in self._nav_btns.items():
-            btn.config(bg=C["accent"] if k == key else C["bg"],
-                       fg=C["text"] if k == key else C["text2"])
+            btn.config(bg=C["accent"] if k == key else C["header"],
+                       fg="#ffffff" if k == key else _SB_FG)
         self._active_panel = key
 
     # ── Helpers de layout ─────────────────────────────────────────────────────
@@ -108,15 +114,25 @@ class ViewAjustes(tk.Frame):
         return inner
 
     def _card(self, parent: tk.Frame, title: str,
-              icon: str = "") -> tk.Frame:
-        outer = tk.Frame(parent, bg=C["surface"],
-                         padx=0, pady=0)
-        outer.pack(fill=tk.X, padx=18, pady=(0, 12))
-        hdr = tk.Frame(outer, bg=C["surface2"], padx=14, pady=10)
-        hdr.pack(fill=tk.X)
+              icon: str = "", accent: str = None) -> tk.Frame:
+        # Marco exterior con borde visible
+        wrap = tk.Frame(parent, bg=C["border"], padx=1, pady=1)
+        wrap.pack(fill=tk.X, padx=18, pady=(0, 14))
+
+        outer = tk.Frame(wrap, bg=C["surface"])
+        outer.pack(fill=tk.X)
+
+        # Franja de color izquierda + cabecera
+        row = tk.Frame(outer, bg=C["surface2"])
+        row.pack(fill=tk.X)
+        bar_color = accent or C["accent"]
+        tk.Frame(row, bg=bar_color, width=4).pack(side=tk.LEFT, fill=tk.Y)
+        hdr = tk.Frame(row, bg=C["surface2"], padx=14, pady=10)
+        hdr.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         tk.Label(hdr, text=f"{icon}  {title}" if icon else title,
                  font=FONTS["h3"], bg=C["surface2"],
                  fg=C["text"]).pack(side=tk.LEFT)
+
         tk.Frame(outer, bg=C["border"], height=1).pack(fill=tk.X)
         body = tk.Frame(outer, bg=C["surface"], padx=16, pady=14)
         body.pack(fill=tk.X)
@@ -169,7 +185,7 @@ class ViewAjustes(tk.Frame):
         p = self._panels["general"]
         inner = self._scrollable(p)
         self._ph(inner, t("general.title"), t("general.subtitle"))
-        body = self._card(inner, t("general.appearance"), "🎨")
+        body = self._card(inner, t("general.appearance"), "🎨", accent="#8b5cf6")
 
         self._lbl(body, t("general.font_size"))
         _fs_entries = [
@@ -261,7 +277,7 @@ class ViewAjustes(tk.Frame):
         inner = self._scrollable(p)
         self._ph(inner, t("tts.title"), t("tts.subtitle"))
 
-        body = self._card(inner, "Text to Speech Engine", "🗣️")
+        body = self._card(inner, "Text to Speech Engine", "🗣️", accent="#818cf8")
 
         # Selector de motor
         self._lbl(body, t("tts.engine"))
@@ -566,7 +582,7 @@ class ViewAjustes(tk.Frame):
     # ── Serial ────────────────────────────────────────────────────────────────
     def _build_serial_panel(self, parent: tk.Frame,
                              inner: tk.Frame) -> None:
-        body = self._card(parent, t("serial.title"), "🔌")
+        body = self._card(parent, t("serial.title"), "🔌", accent="#f59e0b")
         parent.pack(fill=tk.X, padx=18, pady=(0, 12))
 
         # Puerto + Refresh
@@ -713,7 +729,7 @@ class ViewAjustes(tk.Frame):
     # ── AMI ───────────────────────────────────────────────────────────────────
     def _build_ami_panel(self, parent: tk.Frame,
                           inner: tk.Frame) -> None:
-        body = self._card(parent, t("ami.title"), "☎️")
+        body = self._card(parent, t("ami.title"), "☎️", accent="#f59e0b")
         parent.pack(fill=tk.X, padx=18, pady=(0, 12))
 
         row = tk.Frame(body, bg=C["surface"])
@@ -821,7 +837,7 @@ class ViewAjustes(tk.Frame):
     # ── API ───────────────────────────────────────────────────────────────────
     def _build_api_panel(self, parent: tk.Frame,
                           inner: tk.Frame) -> None:
-        body = self._card(parent, t("api.title"), "🌐")
+        body = self._card(parent, t("api.title"), "🌐", accent="#f59e0b")
         parent.pack(fill=tk.X, padx=18, pady=(0, 12))
 
         self._lbl(body, t("api.base_url"))
@@ -949,7 +965,7 @@ class ViewAjustes(tk.Frame):
         p = self._panels["audio"]
         inner = self._scrollable(p)
         self._ph(inner, t("audio.title"), t("audio.subtitle"))
-        body = self._card(inner, t("audio.output"), "🔊")
+        body = self._card(inner, t("audio.output"), "🔊", accent="#34d399")
         self._lbl(body, t("audio.device"))
         devices = [t("audio.default")]
         try:
@@ -1006,7 +1022,7 @@ class ViewAjustes(tk.Frame):
         self._ph(inner, t("pauses.title"), t("pauses.subtitle"))
 
         # ── Activar ────────────────────────────────────────────────────────
-        body_en = self._card(inner, t("pauses.status"), "⏸")
+        body_en = self._card(inner, t("pauses.status"), "⏸", accent="#ef4444")
         self._pause_enabled_var = tk.BooleanVar(
             value=self.cfg.get("pause_enabled", False))
         tk.Checkbutton(body_en,
@@ -1027,7 +1043,7 @@ class ViewAjustes(tk.Frame):
         self._pauses_body = tk.Frame(inner, bg=C["bg"])
         self._pauses_body.pack(fill=tk.X)
 
-        body_t = self._card(self._pauses_body, t("pauses.times"), "⏱")
+        body_t = self._card(self._pauses_body, t("pauses.times"), "⏱", accent="#fbbf24")
         body_t.columnconfigure(0, weight=1)
         body_t.columnconfigure(1, weight=1)
         body_t.columnconfigure(2, weight=1)
@@ -1092,7 +1108,7 @@ class ViewAjustes(tk.Frame):
                  wraplength=340, justify="left").pack(side="left", padx=(16, 0))
 
         # ── Archivos de audio ──────────────────────────────────────────────
-        body_a = self._card(self._pauses_body, t("pauses.audio_files"), "🔊")
+        body_a = self._card(self._pauses_body, t("pauses.audio_files"), "🔊", accent="#34d399")
 
         for lbl, key, icon in [
             (t("pauses.alert_file"),  "pause_alert_file",        "🔔"),
@@ -1179,7 +1195,7 @@ class ViewAjustes(tk.Frame):
         p = self._panels["db"]
         inner = self._scrollable(p)
         self._ph(inner, t("db.title"), t("db.subtitle"))
-        body = self._card(inner, t("db.sqlite"), "🗄️")
+        body = self._card(inner, t("db.sqlite"), "🗄️", accent="#60a5fa")
 
         import database
         db_path    = str(database.DB_PATH)
@@ -1227,7 +1243,7 @@ class ViewAjustes(tk.Frame):
         p = self._panels["logs"]
         inner = self._scrollable(p)
         self._ph(inner, t("logs.title"), t("logs.subtitle"))
-        body = self._card(inner, t("logs.recent"), "📋")
+        body = self._card(inner, t("logs.recent"), "📋", accent="#94a3b8")
 
         self._log_text = tk.Text(body, height=14,
                                   bg=C["input_bg"], fg=C["success"],

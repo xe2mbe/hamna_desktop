@@ -9,56 +9,58 @@ from typing import Callable
 # ── Paletas ───────────────────────────────────────────────────────────────────
 PALETTES: dict[str, dict] = {
     "dark": {
-        "bg":        "#0d1117",
-        "surface":   "#161b22",
-        "surface2":  "#21262d",
-        "border":    "#30363d",
-        "accent":    "#1f6feb",
-        "accent_h":  "#388bfd",
-        "success":   "#238636",
-        "success_h": "#2ea043",
-        "danger":    "#da3633",
-        "danger_h":  "#f85149",
-        "warning":   "#9e6a03",
-        "warning_h": "#d29922",
-        "text":      "#e6edf3",
-        "text2":     "#8b949e",
-        "text3":     "#484f58",
-        "input_bg":  "#0d1117",
-        "header":    "#010409",
-        "on_air":    "#da3633",
-        "tts_bg":    "#1c2a3a",
-        "tts_fg":    "#388bfd",
-        "audio_bg":  "#1a2d1a",
-        "audio_fg":  "#3fb950",
-        "sonido_bg": "#2d2114",
-        "sonido_fg": "#d29922",
+        "bg":        "#020509",   # negro azulado — fondo base muy oscuro
+        "surface":   "#0b1120",   # tarjetas — claramente más claro que bg
+        "surface2":  "#142035",   # cabeceras de tarjeta / elementos anidados
+        "border":    "#1e3a64",   # borde azul visible
+        "accent":    "#3b82f6",   # azul eléctrico
+        "accent_h":  "#60a5fa",   # azul hover
+        "success":   "#059669",   # esmeralda
+        "success_h": "#10b981",   # esmeralda hover
+        "danger":    "#ef4444",   # rojo vivo
+        "danger_h":  "#f87171",   # rojo hover
+        "warning":   "#d97706",   # ámbar
+        "warning_h": "#fbbf24",   # ámbar hover
+        "text":      "#e2e8f0",   # blanco cálido
+        "text2":     "#94a3b8",   # gris-azul
+        "text3":     "#4a5a72",   # gris-azul oscuro
+        "input_bg":  "#060d1a",   # inputs ligeramente más claro que bg
+        "header":    "#010305",   # tira superior — más oscuro que bg
+        "header_fg": "#e2e8f0",   # texto sobre header
+        "on_air":    "#ef4444",
+        "tts_bg":    "#1a1640",   # índigo oscuro
+        "tts_fg":    "#818cf8",   # índigo claro
+        "audio_bg":  "#012a1e",   # esmeralda muy oscuro
+        "audio_fg":  "#34d399",   # esmeralda brillante
+        "sonido_bg": "#2c1500",   # ámbar muy oscuro
+        "sonido_fg": "#fbbf24",   # ámbar brillante
     },
     "light": {
-        "bg":        "#f6f8fa",
-        "surface":   "#ffffff",
-        "surface2":  "#f3f4f6",
-        "border":    "#d0d7de",
-        "accent":    "#0969da",
-        "accent_h":  "#0550ae",
-        "success":   "#1a7f37",
-        "success_h": "#116329",
-        "danger":    "#cf222e",
-        "danger_h":  "#a40e26",
-        "warning":   "#9a6700",
-        "warning_h": "#7d4e00",
-        "text":      "#24292f",
-        "text2":     "#57606a",
-        "text3":     "#8c959f",
+        "bg":        "#f0f4f8",   # gris-azul suave — no blanco puro
+        "surface":   "#ffffff",   # tarjetas blancas (contraste con bg)
+        "surface2":  "#e2eaf4",   # cabeceras de tarjeta — azul muy claro
+        "border":    "#93b4d8",   # borde azul visible
+        "accent":    "#1d4ed8",   # azul más profundo
+        "accent_h":  "#1e40af",   # azul hover
+        "success":   "#047857",   # verde esmeralda oscuro
+        "success_h": "#065f46",   # hover
+        "danger":    "#dc2626",   # rojo fuerte
+        "danger_h":  "#b91c1c",   # hover
+        "warning":   "#b45309",   # ámbar oscuro
+        "warning_h": "#92400e",   # hover
+        "text":      "#0f172a",   # casi negro — alto contraste
+        "text2":     "#334155",   # gris oscuro
+        "text3":     "#64748b",   # gris medio
         "input_bg":  "#ffffff",
-        "header":    "#eaeef2",
-        "on_air":    "#cf222e",
-        "tts_bg":    "#ddf4ff",
-        "tts_fg":    "#0969da",
-        "audio_bg":  "#dafbe1",
-        "audio_fg":  "#1a7f37",
-        "sonido_bg": "#fff8c5",
-        "sonido_fg": "#9a6700",
+        "header":    "#1e3a5f",   # azul marino oscuro — contraste total con bg
+        "header_fg": "#e2e8f0",   # texto claro para usar sobre header oscuro
+        "on_air":    "#dc2626",
+        "tts_bg":    "#ede9fe",   # violeta muy claro
+        "tts_fg":    "#4f46e5",   # índigo
+        "audio_bg":  "#d1fae5",   # verde muy claro
+        "audio_fg":  "#047857",   # esmeralda
+        "sonido_bg": "#fef3c7",   # ámbar muy claro
+        "sonido_fg": "#b45309",   # ámbar oscuro
     },
 }
 
@@ -174,7 +176,7 @@ def apply_theme(root: tk.Misc) -> None:
     )
     style.configure("TProgressbar",
         troughcolor=C["surface2"], background=C["accent"],
-        bordercolor=C["border"],
+        bordercolor=C["border"], thickness=6,
     )
 
 
@@ -196,15 +198,15 @@ class HButton(tk.Button):
 
     # (bg_normal, bg_hover, fg)
     VARIANTS: dict[str, tuple[str, str, str]] = {
-        "primary": ("#0d6efd", "#0b5ed7", "#ffffff"),
-        "success": ("#198754", "#157347", "#ffffff"),
-        "edit":    ("#1a9a52", "#157a42", "#ffffff"),
-        "danger":  ("#c0392b", "#a93226", "#ffffff"),
-        "warning": ("#c47f17", "#a66d11", "#ffffff"),
-        "ghost":   ("#2d333b", "#3d444d", "#adbac7"),
-        "muted":   ("#21262d", "#2d333b", "#8b949e"),
-        "on_air":  ("#9b1c1c", "#b91c1c", "#ffffff"),
-        "info":    ("#0e7490", "#0891b2", "#ffffff"),
+        "primary": ("#3b82f6", "#2563eb", "#ffffff"),
+        "success": ("#059669", "#047857", "#ffffff"),
+        "edit":    ("#0d9488", "#0f766e", "#ffffff"),
+        "danger":  ("#ef4444", "#dc2626", "#ffffff"),
+        "warning": ("#d97706", "#b45309", "#ffffff"),
+        "ghost":   ("#1c2540", "#2a3a5c", "#94a3b8"),
+        "muted":   ("#131929", "#1c2540", "#64748b"),
+        "on_air":  ("#991b1b", "#b91c1c", "#ffffff"),
+        "info":    ("#0891b2", "#0e7490", "#ffffff"),
     }
 
     def __init__(self, parent, text: str = "", command: Callable = None,
@@ -264,11 +266,14 @@ class HDialog(tk.Toplevel):
     def make_footer(self, buttons: list[tuple]) -> None:
         """buttons = [("Texto", variant, command), ...]"""
         tk.Frame(self, bg=C["border"], height=1).pack(fill=tk.X, side=tk.BOTTOM)
-        bf = tk.Frame(self, bg=C["bg"], pady=12, padx=20)
+        bf = tk.Frame(self, bg=C["bg"], pady=14)
         bf.pack(fill=tk.X, side=tk.BOTTOM)
-        for i, (text, variant, cmd) in enumerate(reversed(buttons)):
-            HButton(bf, text=text, command=cmd, variant=variant).pack(
-                side=tk.RIGHT, padx=(8 if i else 0, 0))
+        bf.columnconfigure(0, weight=1)
+        inner = tk.Frame(bf, bg=C["bg"])
+        inner.grid(row=0, column=0)
+        for text, variant, cmd in buttons:
+            HButton(inner, text=text, command=cmd, variant=variant).pack(
+                side=tk.LEFT, padx=6)
 
 
 # ── Widgets utilitarios ───────────────────────────────────────────────────────

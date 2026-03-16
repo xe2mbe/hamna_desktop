@@ -125,7 +125,7 @@ class ViewEventos(tk.Frame):
 
         # PanedWindow
         paned = tk.PanedWindow(self, orient=tk.HORIZONTAL,
-                               bg=C["border"], sashwidth=5,
+                               bg=C["border"], sashwidth=4,
                                sashrelief="flat", bd=0)
         paned.pack(fill=tk.BOTH, expand=True)
 
@@ -133,16 +133,22 @@ class ViewEventos(tk.Frame):
         lp = tk.Frame(paned, bg=C["bg"])
         paned.add(lp, minsize=180, width=310, stretch="never")
 
-        ev_area = tk.Frame(lp, bg=C["bg"])
+        ev_area = tk.Frame(lp, bg=C["surface"])
         ev_area.pack(fill=tk.BOTH, expand=True)
 
         ev_sb = ttk.Scrollbar(ev_area, orient="vertical")
-        ev_sb.pack(side=tk.RIGHT, fill=tk.Y)
+
+        def _ev_yscroll(first, last):
+            if float(first) <= 0.0 and float(last) >= 1.0:
+                ev_sb.pack_forget()
+            else:
+                ev_sb.pack(side=tk.RIGHT, fill=tk.Y, before=self._ev_tree)
+            ev_sb.set(first, last)
 
         ev_cols = ("nombre", "tipo", "dur")
         self._ev_tree = ttk.Treeview(
             ev_area, columns=ev_cols, show="headings",
-            yscrollcommand=ev_sb.set, selectmode="browse")
+            yscrollcommand=_ev_yscroll, selectmode="browse")
         ev_sb.config(command=self._ev_tree.yview)
 
         self._ev_tree.heading("nombre", text="Nombre", anchor="w")
@@ -207,16 +213,22 @@ class ViewEventos(tk.Frame):
             command=self._transmitir, variant="success")
 
         # Secciones Treeview
-        sec_area = tk.Frame(rp, bg=C["bg"])
+        sec_area = tk.Frame(rp, bg=C["surface"])
         sec_area.pack(fill=tk.BOTH, expand=True)
 
         sec_sb = ttk.Scrollbar(sec_area, orient="vertical")
-        sec_sb.pack(side=tk.RIGHT, fill=tk.Y)
+
+        def _sec_yscroll(first, last):
+            if float(first) <= 0.0 and float(last) >= 1.0:
+                sec_sb.pack_forget()
+            else:
+                sec_sb.pack(side=tk.RIGHT, fill=tk.Y, before=self._sec_tree)
+            sec_sb.set(first, last)
 
         sec_cols = ("orden", "nombre", "tipo", "dur")
         self._sec_tree = ttk.Treeview(
             sec_area, columns=sec_cols, show="headings",
-            yscrollcommand=sec_sb.set, selectmode="browse")
+            yscrollcommand=_sec_yscroll, selectmode="browse")
         sec_sb.config(command=self._sec_tree.yview)
 
         self._sec_tree.heading("orden",  text="#",      anchor="center")
