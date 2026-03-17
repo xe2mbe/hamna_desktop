@@ -335,8 +335,8 @@ class ViewAjustes(tk.Frame):
         rf = tk.Frame(row1, bg=C["surface"])
         rf.grid(row=0, column=1, sticky="ew")
         self._lbl(rf, t("tts.region"))
-        regions = ["eastus", "eastus2", "westus2", "northeurope",
-                   "westeurope", "mexicocentral", "southeastasia"]
+        regions = ["southcentralus", "eastus", "eastus2", "westus2",
+                   "northeurope", "westeurope", "mexicocentral", "southeastasia"]
         self._az_region = ttk.Combobox(rf, values=regions)
         v = self.cfg.get("azure_region", "")
         if v: self._az_region.set(v)
@@ -362,8 +362,15 @@ class ViewAjustes(tk.Frame):
         rf2.grid(row=0, column=1, sticky="ew")
         self._lbl(rf2, t("tts.neural_voice"))
         self._az_voice = ttk.Combobox(rf2,
-            values=["es-MX-DaliaNeural", "es-MX-JorgeNeural",
-                    "es-MX-CarlotaNeural"],
+            values=["es-MX-DaliaNeural", "es-MX-DaliaMultilingualNeural",
+                    "es-MX-JorgeNeural", "es-MX-JorgeMultilingualNeural",
+                    "es-MX-BeatrizNeural", "es-MX-CandelaNeural",
+                    "es-MX-CarlotaNeural", "es-MX-CecilioNeural",
+                    "es-MX-GerardoNeural", "es-MX-LarissaNeural",
+                    "es-MX-LibertoNeural", "es-MX-LucianoNeural",
+                    "es-MX-MarinaNeural", "es-MX-NuriaNeural",
+                    "es-MX-PelayoNeural", "es-MX-RenataNeural",
+                    "es-MX-YagoNeural"],
             state="readonly")
         v2 = self.cfg.get("azure_voice", "es-MX-DaliaNeural")
         self._az_voice.set(v2)
@@ -410,23 +417,43 @@ class ViewAjustes(tk.Frame):
         self._lbl(rf4, t("tts.pitch_hz"))
         self._az_pitch = self._slider(rf4, "azure_pitch", -20, 20)
 
-        # Estado
+        # Estado conexión
         self._az_status = tk.Label(self._azure_frame,
             text=t("tts.unverified"),
             font=FONTS["small"], bg=C["surface"],
             fg=C["warning"])
         self._az_status.pack(anchor="w", pady=(8, 0))
 
-        # Botones
-        btn_row = tk.Frame(body, bg=C["surface"])
-        btn_row.pack(fill=tk.X, pady=(12, 0))
-        HButton(btn_row, t("tts.test_voice"),
-                command=self._test_tts,
-                variant="ghost").pack(side=tk.LEFT)
-        self._btn_az_test = HButton(btn_row, t("tts.test_azure"),
+        # ── Área de prueba de voz ──────────────────────────────────────────
+        test_card = self._card(inner, "Prueba de voz", "🔊", accent="#22c55e")
+
+        self._lbl(test_card, "Texto de prueba")
+        self._az_test_text = tk.Text(test_card, height=3,
+            font=FONTS["body"], bg=C["input_bg"], fg=C["text"],
+            insertbackground=C["text"], relief="flat",
+            wrap="word", padx=8, pady=6)
+        _DEFAULT_TEST = ("HAMNA, sistema desarrollado por los integrantes "
+                         "del Radio Club Guadiana A.C.")
+        self._az_test_text.insert("1.0", _DEFAULT_TEST)
+        self._az_test_text.pack(fill=tk.X, pady=(0, 6))
+
+        self._az_voice_status = tk.Label(test_card, text="",
+            font=FONTS["small"], bg=C["surface"], fg=C["text3"])
+        self._az_voice_status.pack(anchor="w")
+
+        test_btns = tk.Frame(test_card, bg=C["surface"])
+        test_btns.pack(fill=tk.X, pady=(8, 0))
+        HButton(test_btns, "🔗  Probar conexión",
                 command=self._test_azure,
-                variant="ghost")
-        HButton(btn_row, t("tts.save"),
+                variant="ghost").pack(side=tk.LEFT)
+        HButton(test_btns, "🔊  Probar voz",
+                command=self._preview_voice,
+                variant="info").pack(side=tk.LEFT, padx=(8, 0))
+
+        # Guardar
+        save_row = tk.Frame(inner, bg=C["bg"])
+        save_row.pack(fill=tk.X, padx=18, pady=(8, 18))
+        HButton(save_row, t("tts.save"),
                 command=self._save_tts,
                 variant="success").pack(side=tk.RIGHT)
 
@@ -437,21 +464,40 @@ class ViewAjustes(tk.Frame):
         if engine == "azure":
             self._pyttsx3_frame.pack_forget()
             self._azure_frame.pack(fill=tk.X)
-            self._btn_az_test.pack(side=tk.LEFT, padx=(6, 0))
         else:
             self._azure_frame.pack_forget()
             self._pyttsx3_frame.pack(fill=tk.X)
-            self._btn_az_test.pack_forget()
 
     def _filter_az_voices(self, event=None) -> None:
         lang = self._az_lang.get()
         voice_db = {
-            "es-MX": ["es-MX-DaliaNeural", "es-MX-JorgeNeural",
-                      "es-MX-CarlotaNeural", "es-MX-NuriaNeural"],
-            "es-ES": ["es-ES-ElviraNeural", "es-ES-AlvaroNeural"],
+            "es-MX": ["es-MX-DaliaNeural", "es-MX-DaliaMultilingualNeural",
+                      "es-MX-JorgeNeural", "es-MX-JorgeMultilingualNeural",
+                      "es-MX-BeatrizNeural", "es-MX-CandelaNeural",
+                      "es-MX-CarlotaNeural", "es-MX-CecilioNeural",
+                      "es-MX-GerardoNeural", "es-MX-LarissaNeural",
+                      "es-MX-LibertoNeural", "es-MX-LucianoNeural",
+                      "es-MX-MarinaNeural", "es-MX-NuriaNeural",
+                      "es-MX-PelayoNeural", "es-MX-RenataNeural",
+                      "es-MX-YagoNeural"],
+            "es-ES": ["es-ES-ElviraNeural", "es-ES-AlvaroNeural",
+                      "es-ES-AbrilNeural", "es-ES-DarioNeural",
+                      "es-ES-EliasNeural", "es-ES-EstrellaNeural",
+                      "es-ES-IreneNeural", "es-ES-NilNeural",
+                      "es-ES-SaulNeural", "es-ES-TeoNeural",
+                      "es-ES-VeraNeural", "es-ES-XimenaNeural"],
+            "es-AR": ["es-AR-ElenaNeural", "es-AR-TomasNeural"],
+            "es-CO": ["es-CO-GonzaloNeural", "es-CO-SalomeNeural"],
+            "es-US": ["es-US-AlonsoNeural", "es-US-PalomaNeural"],
             "en-US": ["en-US-JennyNeural", "en-US-GuyNeural",
-                      "en-US-AriaNeural"],
-            "pt-BR": ["pt-BR-FranciscaNeural", "pt-BR-AntonioNeural"],
+                      "en-US-AriaNeural", "en-US-DavisNeural",
+                      "en-US-AmberNeural", "en-US-AnaNeural"],
+            "en-GB": ["en-GB-SoniaNeural", "en-GB-RyanNeural",
+                      "en-GB-LibbyNeural", "en-GB-MaisieNeural"],
+            "pt-BR": ["pt-BR-FranciscaNeural", "pt-BR-AntonioNeural",
+                      "pt-BR-BrendaNeural", "pt-BR-DonatoNeural"],
+            "fr-FR": ["fr-FR-DeniseNeural", "fr-FR-HenriNeural",
+                      "fr-FR-EloiseNeural", "fr-FR-YvesNeural"],
         }
         voices = voice_db.get(lang, [])
         self._az_voice.config(values=voices)
@@ -461,19 +507,92 @@ class ViewAjustes(tk.Frame):
     def _test_tts(self) -> None:
         messagebox.showinfo("TTS", t("tts.test_msg"))
 
+    def _preview_voice(self) -> None:
+        """Sintetiza el texto de prueba con la configuración actual y lo reproduce."""
+        text = self._az_test_text.get("1.0", "end").strip()
+        if not text:
+            return
+
+        # Detener reproducción anterior si sigue activa
+        if getattr(self, "_tts_preview_player", None):
+            try:
+                self._tts_preview_player.stop()
+            except Exception:
+                pass
+            self._tts_preview_player = None
+
+        self._az_voice_status.config(text="⏳ Sintetizando…", fg=C["warning"])
+
+        cfg_preview = dict(self.cfg)
+        cfg_preview["tts_engine"]    = "azure"
+        cfg_preview["azure_key"]     = self._az_key.get().strip()
+        cfg_preview["azure_region"]  = self._az_region.get().strip()
+        cfg_preview["azure_voice"]   = self._az_voice.get()
+        cfg_preview["azure_style"]   = self._az_style.get()
+        cfg_preview["azure_format"]  = self._az_format.get()
+        cfg_preview["azure_rate"]    = int(self._az_rate.get())
+        cfg_preview["azure_pitch"]   = int(self._az_pitch.get())
+
+        # Alternar entre dos archivos para nunca sobrescribir el que está en uso
+        from pathlib import Path
+        _slot = getattr(self, "_tts_preview_slot", 0)
+        self._tts_preview_slot = 1 - _slot
+        _PREVIEW_MP3 = Path(__file__).parent.parent / f"tts_preview_{_slot}.mp3"
+
+        from modules.tts.tts_manager import convert_text
+
+        def on_done(ok: bool, result: str) -> None:
+            if ok:
+                self.after(0, lambda: self._az_voice_status.config(
+                    text="✓ Reproduciendo…", fg=C["success"]))
+                def play():
+                    try:
+                        from modules.audio.audio_player import AudioPlayer
+                        import time
+                        player = AudioPlayer()
+                        self._tts_preview_player = player
+                        player.play(result)
+                        while player.is_playing():
+                            time.sleep(0.1)
+                        self._tts_preview_player = None
+                        self.after(0, lambda: self._az_voice_status.config(
+                            text="✓ Reproducción completa", fg=C["success"]))
+                    except Exception as ex:
+                        self._tts_preview_player = None
+                        self.after(0, lambda: self._az_voice_status.config(
+                            text=f"✓ Audio generado ({ex})", fg=C["text3"]))
+                threading.Thread(target=play, daemon=True).start()
+            else:
+                self.after(0, lambda: self._az_voice_status.config(
+                    text=f"✗ {result}", fg=C["danger"]))
+
+        convert_text(text, cfg_preview, _PREVIEW_MP3, on_done)
+
     def _test_azure(self) -> None:
         self._az_status.config(text=t("tts.verifying"), fg=C["warning"])
         key    = self._az_key.get().strip()
         region = self._az_region.get().strip()
+
         def run():
+            # Verificación real: obtener token OAuth del servicio
+            import urllib.request, urllib.error
+            url = f"https://{region}.api.cognitive.microsoft.com/sts/v1.0/issueToken"
+            req = urllib.request.Request(
+                url, data=b"",
+                headers={"Ocp-Apim-Subscription-Key": key})
             try:
-                import azure.cognitiveservices.speech as sdk
-                cfg = sdk.SpeechConfig(subscription=key, region=region)
+                with urllib.request.urlopen(req, timeout=8) as r:
+                    r.read()   # token descartado, solo verificamos 200 OK
                 self.after(0, lambda: self._az_status.config(
-                    text=t("tts.az_connected"), fg=C["success"]))
+                    text="●  " + t("tts.az_connected"), fg=C["success"]))
+            except urllib.error.HTTPError as e:
+                msg = f"●  HTTP {e.code} — clave o región incorrecta"
+                self.after(0, lambda: self._az_status.config(
+                    text=msg, fg=C["danger"]))
             except Exception as e:
                 self.after(0, lambda: self._az_status.config(
                     text=f"●  Error: {e}", fg=C["danger"]))
+
         threading.Thread(target=run, daemon=True).start()
 
     def _save_tts(self) -> None:
@@ -493,6 +612,16 @@ class ViewAjustes(tk.Frame):
         cfg_mod.save(self.cfg)
         if callable(self.on_cfg_saved):
             self.on_cfg_saved(self.cfg)
+
+        # Limpiar archivos temporales de preview
+        from pathlib import Path
+        for slot in (0, 1):
+            p = Path(__file__).parent.parent / f"tts_preview_{slot}.mp3"
+            try:
+                p.unlink(missing_ok=True)
+            except Exception:
+                pass
+
         messagebox.showinfo(t("tts.saved_title"), t("tts.saved_msg"))
 
     # ══════════════════════════════════════════════════════════════════════════

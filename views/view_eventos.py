@@ -336,6 +336,8 @@ class ViewEventos(tk.Frame):
         self._render_eventos(self._all_eventos)
         if self._sec_mode == "biblioteca":
             self._load_biblioteca()
+        elif self._sec_mode == "evento" and self._selected_ev:
+            self._load_secciones(self._selected_ev)
 
     def _filter(self) -> None:
         q = self._search_var.get().lower()

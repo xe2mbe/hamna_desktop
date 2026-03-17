@@ -9,7 +9,7 @@ from pathlib import Path
 import database as db
 from ui_theme import C, FONTS, HButton, HDialog
 from modules.tts.tts_manager import (
-    convert_text, save_audio_file, get_audio_duration, TEMP_MP3
+    convert_text, save_audio_file, get_audio_duration
 )
 from modules.audio.audio_player import AudioPlayer
 from forms.audio_player_window import AudioPlayerWindow
@@ -29,6 +29,7 @@ class SeccionForm(HDialog):
         self._player       = AudioPlayer()
         self._tts_done     = False
         self._tts_path     = None
+        self._tts_slot     = 0   # alterna entre tts_form_0.mp3 y tts_form_1.mp3
         self._selected_file: str | None = None
         self._sec_data     = None
 
@@ -144,18 +145,128 @@ class SeccionForm(HDialog):
         if self._sec_data and self._sec_data["texto_tts"]:
             self._tts_text.insert("1.0", self._sec_data["texto_tts"])
 
+        # ── Paleta de variables ───────────────────────────────────────────
+        tk.Label(d, text="INSERTAR VARIABLE", font=FONTS["badge"],
+                 bg=C["bg"], fg=C["text2"]).pack(anchor="w", pady=(10, 4))
+
+        _var_groups = [
+            ("📅 Fecha/Hora", [
+                ("{fecha}",           "Fecha (DD/MM/YYYY)"),
+                ("{hora}",            "Hora (HH:MM)"),
+                ("{dia}",             "Día de la semana"),
+            ]),
+            ("⏸ Pausas", [
+                ("{pausa_cada}",      "Pausa cada"),
+                ("{pausa_duracion}",  "Duración pausa"),
+                ("{pausa_alerta}",    "Alerta antes de pausa"),
+            ]),
+            ("📻 Evento", [
+                ("{evento}",          "Nombre del evento"),
+                ("{num_secciones}",   "Cantidad de secciones"),
+                ("{duracion_total}",  "Duración total"),
+            ]),
+        ]
+
+        for group_label, vars_list in _var_groups:
+            row = tk.Frame(d, bg=C["surface"], padx=8, pady=4)
+            row.pack(fill=tk.X, pady=(0, 3))
+            tk.Label(row, text=group_label, font=FONTS["badge"],
+                     bg=C["surface"], fg=C["text3"],
+                     width=14, anchor="w").pack(side=tk.LEFT)
+            for token, tooltip in vars_list:
+                btn = tk.Button(row, text=token,
+                                font=("Consolas", 8), bg=C["surface2"],
+                                fg=C["tts_fg"], relief="flat", bd=0,
+                                cursor="hand2", padx=6, pady=2,
+                                activebackground=C["border"],
+                                command=lambda t=token: self._insert_var(t))
+                btn.pack(side=tk.LEFT, padx=(0, 4))
+
         self._tts_status = tk.Label(d, text="", font=FONTS["small"],
                                      bg=C["bg"], fg=C["text2"])
-        self._tts_status.pack(anchor="w", pady=(4, 0))
+        self._tts_status.pack(anchor="w", pady=(6, 0))
 
         self._tts_progress = ttk.Progressbar(d, mode="indeterminate")
 
         self._centered_footer([
-            ("Cancelar",   "muted",   self.destroy),
-            ("Convertir",  "warning", self._convert_tts),
-            ("Reproducir", "primary", self._play_tts),
-            ("Guardar",    "success", self._save_tts),
+            ("Cancelar",      "muted",   self._cancel),
+            ("Vista previa",  "ghost",   self._preview_vars),
+            ("Convertir",     "warning", self._convert_tts),
+            ("Reproducir",    "primary", self._play_tts),
+            ("Guardar",       "success", self._save_tts),
         ])
+
+    def _preview_vars(self) -> None:
+        """Muestra el texto con variables resueltas tal como lo recibirá el TTS."""
+        from modules.tts.tts_manager import resolve_variables
+
+        raw = self._tts_text.get("1.0", tk.END).strip()
+        if not raw:
+            messagebox.showinfo("Vista previa", "El texto está vacío.", parent=self)
+            return
+
+        # Cargar eventos para que el usuario elija contexto
+        eventos = db.get_all_eventos()
+        ev_map  = {f"{r['nombre']}": r for r in eventos}
+
+        win = tk.Toplevel(self)
+        win.title("Vista previa — texto resuelto")
+        win.geometry("520x340")
+        win.configure(bg=C["bg"])
+        win.resizable(False, False)
+        win.grab_set()
+
+        # Selector de evento (para resolver {evento}, {num_secciones}, etc.)
+        sel_frame = tk.Frame(win, bg=C["bg"])
+        sel_frame.pack(fill=tk.X, padx=16, pady=(14, 6))
+        tk.Label(sel_frame, text="Evento de referencia:",
+                 font=FONTS["badge"], bg=C["bg"], fg=C["text2"]).pack(side=tk.LEFT)
+
+        ev_var = tk.StringVar(value=list(ev_map)[0] if ev_map else "")
+        ev_combo = ttk.Combobox(sel_frame, textvariable=ev_var,
+                                values=list(ev_map), state="readonly", width=28)
+        ev_combo.pack(side=tk.LEFT, padx=(8, 0))
+
+        # Área de resultado
+        tk.Label(win, text="Texto que recibirá el motor TTS:",
+                 font=FONTS["badge"], bg=C["bg"], fg=C["text2"]).pack(
+            anchor="w", padx=16)
+
+        box = tk.Text(win, height=7, wrap="word", font=FONTS["body"],
+                      bg=C["input_bg"], fg=C["text"], relief="flat",
+                      padx=10, pady=8)
+        box.pack(fill=tk.X, padx=16, pady=(4, 0))
+
+        def _refresh(*_):
+            ev_name = ev_var.get()
+            ctx = {}
+            if ev_name and ev_name in ev_map:
+                row = ev_map[ev_name]
+                secs = db.get_secciones_by_evento(row["id"])
+                dur_total = sum(s["duracion"] or 0 for s in secs)
+                m, s2 = divmod(int(dur_total), 60)
+                ctx = {
+                    "evento":         row["nombre"],
+                    "num_secciones":  str(len(secs)),
+                    "duracion_total": f"{m} minutos con {s2} segundos" if s2
+                                      else f"{m} minutos",
+                }
+            resolved = resolve_variables(raw, self.cfg, ctx)
+            box.config(state="normal")
+            box.delete("1.0", tk.END)
+            box.insert("1.0", resolved)
+            box.config(state="disabled")
+
+        ev_combo.bind("<<ComboboxSelected>>", _refresh)
+        _refresh()   # mostrar con el primer evento al abrir
+
+        HButton(win, "Cerrar", command=win.destroy,
+                variant="muted").pack(pady=10)
+
+    def _insert_var(self, token: str) -> None:
+        """Inserta un token de variable en la posición actual del cursor."""
+        self._tts_text.insert(tk.INSERT, token)
+        self._tts_text.focus_set()
 
     def _convert_tts(self) -> None:
         text = self._tts_text.get("1.0", tk.END).strip()
@@ -179,8 +290,12 @@ class SeccionForm(HDialog):
             else:
                 self._tts_status.config(text=f"❌ {result}", fg=C["danger"])
 
+        # Archivo temporal exclusivo del form — no colisiona con el reproductor
+        _out = Path(__file__).parent.parent / f"tts_form_{self._tts_slot}.mp3"
+        self._tts_slot = 1 - self._tts_slot
+
         convert_text(self._tts_text.get("1.0", tk.END).strip(),
-                     self.cfg,
+                     self.cfg, _out,
                      on_done=lambda ok, r: self.after(0, done, ok, r))
 
     def _play_tts(self) -> None:
@@ -355,7 +470,20 @@ class SeccionForm(HDialog):
         f.pack(fill=tk.X, pady=(0, 4))
         tk.Label(f, text=text, font=FONTS["h3"], bg=bg, fg=fg).pack(anchor="w")
 
+    def _cancel(self) -> None:
+        self._cleanup_temp()
+        self.destroy()
+
+    def _cleanup_temp(self) -> None:
+        for slot in (0, 1):
+            p = Path(__file__).parent.parent / f"tts_form_{slot}.mp3"
+            try:
+                p.unlink(missing_ok=True)
+            except Exception:
+                pass
+
     def _finish(self, nombre: str) -> None:
+        self._cleanup_temp()
         messagebox.showinfo("Guardado",
             f"Sección «{nombre}» guardada correctamente.", parent=self)
         if callable(self.on_saved):
