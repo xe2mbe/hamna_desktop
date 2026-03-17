@@ -1,6 +1,6 @@
 # HAMNA Desktop
 
-Sistema de Gestión de Audio para Radiodifusión — v1.1.0
+Amateur Radio (HAM) Net Automation (NA) System — v1.1.0
 
 ## Requisitos
 
