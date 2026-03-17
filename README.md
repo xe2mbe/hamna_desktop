@@ -1,6 +1,6 @@
-# 📻 HAMNA Desktop
+# HAMNA Desktop
 
-Sistema de Gestión de Audio para Radiodifusión — v1.0.0
+Sistema de Gestión de Audio para Radiodifusión — v1.1.0
 
 ## Requisitos
 
@@ -10,11 +10,12 @@ Sistema de Gestión de Audio para Radiodifusión — v1.0.0
 
 ---
 
-## Instalación en 5 pasos
+## Instalación
 
 ```bat
-:: 1. Clonar / descomprimir el proyecto
-cd C:\hamna_desktop
+:: 1. Clonar el repositorio
+git clone https://github.com/xe2mbe/hamna_desktop.git
+cd hamna_desktop
 
 :: 2. Crear entorno virtual
 python -m venv .venv
@@ -23,8 +24,9 @@ python -m venv .venv
 :: 3. Instalar dependencias
 pip install -r requirements.txt
 
-:: 4. (Opcional) Azure TTS
-pip install azure-cognitiveservices-speech
+:: 4. Configurar ajustes
+copy settings.json.example settings.json
+:: Editar settings.json con tus valores (clave Azure, puerto serial, etc.)
 
 :: 5. Ejecutar
 python main.py
@@ -37,67 +39,126 @@ python main.py
 ```
 hamna_desktop/
 │
-├── main.py                       ← Punto de entrada
-├── main_window.py                ← Ventana principal + motor de transmisión
-├── database.py                   ← Capa SQLite
-├── settings.py                   ← Configuración JSON
-├── ui_theme.py                   ← Tema oscuro + widgets base
+├── main.py                       <- Punto de entrada
+├── main_window.py                <- Ventana principal + motor de transmisión
+├── database.py                   <- Capa SQLite
+├── settings.py                   <- Configuración JSON
+├── ui_theme.py                   <- Tema oscuro/claro + widgets base
+├── i18n.py                       <- Internacionalización (español)
 │
 ├── modules/
 │   ├── ptt/
-│   │   ├── ptt_serial.py         ← PTT via RTS/DTR (pyserial)
-│   │   ├── ptt_ami.py            ← PTT via Asterisk AMI
-│   │   ├── ptt_api.py            ← PTT via HTTP REST
-│   │   └── ptt_manager.py        ← Fachada unificada PTT
+│   │   ├── ptt_serial.py         <- PTT via RTS/DTR (pyserial)
+│   │   ├── ptt_ami.py            <- PTT via Asterisk AMI
+│   │   ├── ptt_api.py            <- PTT via HTTP REST
+│   │   └── ptt_manager.py        <- Fachada unificada PTT
 │   ├── tts/
-│   │   └── tts_manager.py        ← pyttsx3 + Azure Cognitive Services
+│   │   └── tts_manager.py        <- pyttsx3 + Azure TTS REST
 │   └── audio/
-│       └── audio_player.py       ← Reproducción pygame + fallback
+│       └── audio_player.py       <- Reproducción pygame + fallback MCI
 │
 ├── views/
-│   ├── np_bar.py                 ← Barra "AL AIRE" permanente
-│   ├── view_eventos.py           ← Vista Eventos + secciones CRUD
-│   ├── view_programacion.py      ← Vista Programación + timeline
-│   └── view_ajustes.py           ← Vista Ajustes (TTS + PTT + Audio)
+│   ├── np_bar.py                 <- Barra "AL AIRE" permanente
+│   ├── view_secciones.py         <- Vista Secciones (biblioteca)
+│   ├── view_eventos.py           <- Vista Eventos + secciones CRUD
+│   ├── view_programacion.py      <- Vista Programación + timeline
+│   └── view_ajustes.py           <- Vista Ajustes (TTS + PTT + Audio)
 │
 ├── forms/
-│   ├── evento_form.py            ← Modal Nuevo/Editar Evento
-│   ├── seccion_form.py           ← Modal Sección (TTS / Audio / Sonido)
-│   └── prog_form.py              ← Modal Programar Evento
+│   ├── evento_form.py            <- Modal Nuevo/Editar Evento
+│   ├── seccion_form.py           <- Modal Sección (TTS / Audio / Sonido)
+│   ├── prog_form.py              <- Modal Programar Evento
+│   └── audio_player_window.py    <- Ventana de preescucha
 │
-├── media/audios/                 ← Archivos de audio generados
-├── hamna.db                      ← SQLite (se crea automáticamente)
-├── settings.json                 ← Config guardada (se crea al guardar)
-├── output_temp.mp3               ← Audio temporal TTS
-├── hamna.log                     ← Log de la aplicación
+├── media/audios/                 <- Archivos de audio generados/importados
+├── hamna.db                      <- SQLite (se crea automáticamente)
+├── settings.json                 <- Config local (NO se sube al repo)
+├── settings.json.example         <- Plantilla de configuración
 └── requirements.txt
 ```
 
 ---
 
-## Métodos PTT
+## Funcionalidades
+
+### Secciones (biblioteca reutilizable)
+
+Unidades de audio independientes del evento:
+
+| Tipo | Descripción |
+|------|-------------|
+| **TTS** | Texto con variables → Audio sintetizado al momento |
+| **Audio** | Archivo .mp3 o .wav externo |
+| **Sonido** | Clip corto .mp3/.wav (máx. 3 seg.) |
+
+Las secciones TTS pueden marcarse como **Regenerar antes** (`🔄`): el audio
+se sintetiza automáticamente justo antes de reproducirse, reflejando siempre
+la hora y fecha actuales.
+
+### Eventos
+
+Agrupan secciones en orden para una transmisión:
+
+- **Número de edición**: campo opcional para numerar ediciones del evento
+  (ej. "Boletín Informativo #42"). El asistente calcula el número por
+  ocurrencia del día de la semana en el año a partir de una fecha elegida.
+- **Contabilizable**: cada sección del evento puede marcarse como contabilizable
+  o no. Esto controla qué cuentan `{num_secciones}` y `{dur_contabilizable}`.
+
+### Variables TTS
+
+Disponibles en cualquier texto de sección tipo TTS:
+
+| Variable | Descripción |
+|----------|-------------|
+| `{fecha}` | Fecha actual (dd/mm/aaaa) |
+| `{hora}` | Hora actual (HH:MM) |
+| `{dia}` | Día de la semana en español |
+| `{pausa_cada}` | Intervalo de pausa configurado |
+| `{pausa_duracion}` | Duración de la pausa configurada |
+| `{pausa_alerta}` | Tiempo de alerta antes de pausa |
+| `{evento}` | Nombre del evento de referencia |
+| `{num_secciones}` | Cantidad de secciones contabilizables del evento |
+| `{duracion_total}` | Duración total de todas las secciones del evento |
+| `{dur_contabilizable}` | Duración de secciones contabilizables del evento |
+
+---
+
+## Motor TTS
+
+### pyttsx3 (offline)
+Usa voces SAPI5 del sistema. Para agregar voces en español:
+`Configuración → Hora e idioma → Voz → Agregar voces`
+
+### Azure Cognitive Services (voces neuronales)
+Integración vía REST API — no requiere SDK adicional.
+
+1. Crear recurso "Speech" en [Azure Portal](https://portal.azure.com)
+2. Copiar la clave y la región al `settings.json`
+3. `Ajustes → Motor TTS → Azure Cognitive Services`
+
+---
+
+## Control PTT
 
 ### Serial RS-232 (RTS / DTR)
-Activa el pin **RTS** o **DTR** del puerto serial para PTT.  
-No requiere control de radio — solo activación de pin.
+Activa el pin RTS o DTR del puerto serial.
 
 ```
 Ajustes → Control PTT → Serial RS-232
-Puerto: COM1 (o el que corresponda)
-Baudrate: 9600
-Pin: RTS  ← recomendado
+Puerto: COM1   Baudrate: 9600   Pin: RTS
 ```
 
+El driver USB-Serial debe estar instalado (ej. CH340, CP2102).
+
 ### AMI (Asterisk Manager Interface)
-Envía `Action: Originate` al servidor Asterisk existente.
+Envía `Action: Originate` al servidor Asterisk.
 
 ```
 Ajustes → Control PTT → AMI
-Host: 127.0.0.1  (tu servidor Asterisk)
-Port: 5038
-Username / Password: credenciales de manager.conf
-Canal: SIP/radio
-Contexto: ptt-control
+Host: 127.0.0.1  Port: 5038
+Usuario/Contraseña: credenciales de manager.conf
+Canal: SIP/radio   Contexto: ptt-control
 ```
 
 **En Asterisk (`extensions.conf`):**
@@ -113,39 +174,12 @@ exten => ptt-off,3,Hangup()
 ```
 
 ### API HTTP
-Envía peticiones `GET` (o `POST`/`PUT`) al servidor existente.
+Envía peticiones GET/POST/PUT a un endpoint externo.
 
 ```
 Ajustes → Control PTT → API HTTP
-URL Base:    http://192.168.1.37
-Ruta ON:     /ptt_on
-Ruta OFF:    /ptt_off
+URL Base: http://192.168.1.37   Ruta ON: /ptt_on   Ruta OFF: /ptt_off
 ```
-
----
-
-## Motor TTS
-
-### pyttsx3 (offline — sin internet)
-Usa las voces del sistema. En Windows instala voces en español desde:  
-`Configuración → Hora e idioma → Voz → Agregar voces`
-
-### Azure Cognitive Services (voces neuronales)
-1. Crear recurso "Speech" en Azure Portal
-2. Copiar la clave y la región
-3. `Ajustes → Motor TTS → Azure Cognitive Services`
-
----
-
-## Tipos de Sección
-
-| Tipo | Descripción | Validación |
-|------|-------------|------------|
-| **TTS** | Texto → Audio con el motor configurado | — |
-| **Audio** | Archivo .mp3 o .wav externo | — |
-| **Sonido** | Archivo .mp3 o .wav | Máximo 3 segundos |
-
-Los archivos se guardan en `media/audios/{id}_{nombre}.mp3`
 
 ---
 
@@ -162,7 +196,6 @@ pyinstaller --onefile --windowed --name "HAMNA Desktop" ^
 
 ## Notas
 
+- `settings.json` **no se incluye en el repositorio** — usar `settings.json.example` como plantilla
+- La base de datos `hamna.db` se crea automáticamente en el primer inicio
 - El log completo se guarda en `hamna.log`
-- La base de datos se crea automáticamente en el primer inicio
-- Los ajustes se guardan en `settings.json`
-- PTT Serial: el driver USB-Serial debe estar instalado (ej. CH340, CP2102)

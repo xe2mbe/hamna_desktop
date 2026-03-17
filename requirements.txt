@@ -9,5 +9,4 @@ mutagen>=1.47.0
 requests>=2.31.0
 tkcalendar>=1.6.1
 
-# Azure TTS — descomentar si se usa Azure
-# azure-cognitiveservices-speech>=1.38.0
+# Azure TTS — integrado via REST, no requiere SDK adicional
