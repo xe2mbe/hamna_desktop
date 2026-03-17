@@ -440,11 +440,23 @@ class MainWindow(tk.Tk):
                                       else f"{dc_m} minutos",
             }
 
-        out = Path(sec["ruta_archivo"]) if sec.get("ruta_archivo") else \
-              Path("media/audios") / f"regen_{sec['id']}.mp3"
+        # Siempre escribir a un archivo regen separado para evitar bloquear
+        # el archivo original (puede estar bloqueado por OneDrive o por el player)
+        out = Path("media/audios") / f"regen_{sec['id']}.mp3"
 
         def on_done(ok: bool, result: str) -> None:
             if ok:
+                from modules.tts.tts_manager import get_audio_duration
+                dur = get_audio_duration(result)
+                # Actualizar duración real del regen y reiniciar el timer
+                # para que el avance por timer cuente desde que el audio empieza
+                if dur > 0:
+                    sec["duracion"] = dur
+                    # Actualizar también en _tx_secciones para que _tx_tick use
+                    # la duración correcta
+                    if self._tx_cur_sec < len(self._tx_secciones):
+                        self._tx_secciones[self._tx_cur_sec]["duracion"] = dur
+                self._tx_sec_elapsed      = 0.0
                 self._tx_section_start_ms = 0
                 self._player.play(
                     result,
@@ -454,6 +466,7 @@ class MainWindow(tk.Tk):
                 log.error("Regeneración TTS falló: %s — reproduciendo versión guardada", result)
                 # Fallback: reproducir el audio guardado aunque esté desactualizado
                 if sec.get("ruta_archivo") and Path(sec["ruta_archivo"]).is_file():
+                    self._tx_sec_elapsed = 0.0
                     self._player.play(
                         sec["ruta_archivo"],
                         on_finished=lambda: self.after(0, self._on_sec_audio_finished)
@@ -479,7 +492,6 @@ class MainWindow(tk.Tk):
         if self._tx_cur_sec < len(self._tx_secciones) - 1:
             self._tx_cur_sec      += 1
             self._tx_sec_elapsed   = 0.0
-            self._tx_seg_elapsed   = 0.0   # reiniciar contador de pausa para la nueva sección
             self._tx_alert_played  = False
             self._tx_pause_state   = "section_gap"
             # PTT OFF durante el intervalo entre secciones
