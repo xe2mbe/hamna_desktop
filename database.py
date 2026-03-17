@@ -109,6 +109,29 @@ def init_db() -> None:
 
         conn.commit()
 
+    # ── Migración: columna contabilizable en evento_secciones ────────────────
+    es_cols = [r[1] for r in c.execute(
+        "PRAGMA table_info(evento_secciones)").fetchall()]
+    if "contabilizable" not in es_cols:
+        conn.execute(
+            "ALTER TABLE evento_secciones ADD COLUMN contabilizable INTEGER DEFAULT 1"
+        )
+        conn.commit()
+
+    # ── Migración: columna numero en eventos ──────────────────────────────────
+    ev_cols = [r[1] for r in c.execute("PRAGMA table_info(eventos)").fetchall()]
+    if "numero" not in ev_cols:
+        conn.execute("ALTER TABLE eventos ADD COLUMN numero INTEGER")
+        conn.commit()
+
+    # ── Migración: columna regenerar_antes en secciones ───────────────────────
+    cols = [r[1] for r in c.execute("PRAGMA table_info(secciones)").fetchall()]
+    if "regenerar_antes" not in cols:
+        conn.execute(
+            "ALTER TABLE secciones ADD COLUMN regenerar_antes INTEGER DEFAULT 0"
+        )
+        conn.commit()
+
     # ── Seed eventos_type ──────────────────────────────────────────────────────
     c.execute("SELECT COUNT(*) FROM eventos_type")
     if c.fetchone()[0] == 0:
@@ -137,11 +160,12 @@ def get_eventos_types() -> list[sqlite3.Row]:
 
 
 # ── eventos ────────────────────────────────────────────────────────────────────
-def insert_evento(nombre: str, tipo_evento_id: int) -> int:
+def insert_evento(nombre: str, tipo_evento_id: int,
+                   numero: int = None) -> int:
     with get_connection() as conn:
         c = conn.execute(
-            "INSERT INTO eventos (nombre, tipo_evento_id) VALUES (?, ?)",
-            (nombre, tipo_evento_id)
+            "INSERT INTO eventos (nombre, tipo_evento_id, numero) VALUES (?, ?, ?)",
+            (nombre, tipo_evento_id, numero)
         )
         conn.commit()
         return c.lastrowid
@@ -150,18 +174,19 @@ def insert_evento(nombre: str, tipo_evento_id: int) -> int:
 def get_all_eventos() -> list[sqlite3.Row]:
     with get_connection() as conn:
         return conn.execute("""
-            SELECT e.id, e.nombre, et.nombre AS tipo, e.creado_en
+            SELECT e.id, e.nombre, e.numero, et.nombre AS tipo, e.creado_en
             FROM eventos e
             LEFT JOIN eventos_type et ON et.id = e.tipo_evento_id
             ORDER BY e.creado_en DESC
         """).fetchall()
 
 
-def update_evento(evento_id: int, nombre: str, tipo_evento_id: int) -> None:
+def update_evento(evento_id: int, nombre: str, tipo_evento_id: int,
+                  numero: int = None) -> None:
     with get_connection() as conn:
         conn.execute(
-            "UPDATE eventos SET nombre=?, tipo_evento_id=? WHERE id=?",
-            (nombre, tipo_evento_id, evento_id)
+            "UPDATE eventos SET nombre=?, tipo_evento_id=?, numero=? WHERE id=?",
+            (nombre, tipo_evento_id, numero, evento_id)
         )
         conn.commit()
 
@@ -183,19 +208,22 @@ def get_tipos_seccion() -> list[sqlite3.Row]:
 # ── secciones ──────────────────────────────────────────────────────────────────
 def insert_seccion(nombre: str, tipo_seccion_id: int,
                    ruta_archivo: str = None, texto_tts: str = None,
-                   duracion: float = 0) -> int:
+                   duracion: float = 0,
+                   regenerar_antes: bool = False) -> int:
     with get_connection() as conn:
         c = conn.execute("""
             INSERT INTO secciones
-            (nombre, tipo_seccion_id, ruta_archivo, texto_tts, duracion)
-            VALUES (?, ?, ?, ?, ?)
-        """, (nombre, tipo_seccion_id, ruta_archivo, texto_tts, duracion))
+            (nombre, tipo_seccion_id, ruta_archivo, texto_tts, duracion, regenerar_antes)
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, (nombre, tipo_seccion_id, ruta_archivo, texto_tts, duracion,
+              int(regenerar_antes)))
         conn.commit()
         return c.lastrowid
 
 
 def update_seccion(seccion_id: int, nombre: str, ruta_archivo: str = None,
-                   texto_tts: str = None, duracion: float = None) -> None:
+                   texto_tts: str = None, duracion: float = None,
+                   regenerar_antes: bool = None) -> None:
     with get_connection() as conn:
         fields, vals = [], []
         fields.append("nombre=?"); vals.append(nombre)
@@ -205,6 +233,8 @@ def update_seccion(seccion_id: int, nombre: str, ruta_archivo: str = None,
             fields.append("texto_tts=?"); vals.append(texto_tts)
         if duracion is not None:
             fields.append("duracion=?"); vals.append(duracion)
+        if regenerar_antes is not None:
+            fields.append("regenerar_antes=?"); vals.append(int(regenerar_antes))
         vals.append(seccion_id)
         conn.execute(f"UPDATE secciones SET {', '.join(fields)} WHERE id=?", vals)
         conn.commit()
@@ -222,7 +252,8 @@ def get_all_secciones() -> list[sqlite3.Row]:
     with get_connection() as conn:
         return conn.execute("""
             SELECT s.id, s.nombre, ts.nombre AS tipo,
-                   s.ruta_archivo, s.texto_tts, s.duracion, s.creado_en
+                   s.ruta_archivo, s.texto_tts, s.duracion, s.creado_en,
+                   s.regenerar_antes
             FROM secciones s
             LEFT JOIN tipos_seccion ts ON ts.id = s.tipo_seccion_id
             ORDER BY s.nombre
@@ -233,7 +264,8 @@ def get_seccion_by_id(seccion_id: int) -> sqlite3.Row:
     with get_connection() as conn:
         return conn.execute("""
             SELECT s.id, s.nombre, ts.nombre AS tipo, s.tipo_seccion_id,
-                   s.ruta_archivo, s.texto_tts, s.duracion, s.creado_en
+                   s.ruta_archivo, s.texto_tts, s.duracion, s.creado_en,
+                   s.regenerar_antes
             FROM secciones s
             LEFT JOIN tipos_seccion ts ON ts.id = s.tipo_seccion_id
             WHERE s.id = ?
@@ -245,13 +277,24 @@ def get_secciones_by_evento(evento_id: int) -> list[sqlite3.Row]:
         return conn.execute("""
             SELECT s.id, s.nombre, ts.nombre AS tipo,
                    s.ruta_archivo, s.texto_tts, s.duracion, s.creado_en,
-                   es.orden
+                   s.regenerar_antes, es.orden, es.contabilizable
             FROM secciones s
             JOIN evento_secciones es ON es.seccion_id = s.id
             LEFT JOIN tipos_seccion ts ON ts.id = s.tipo_seccion_id
             WHERE es.evento_id = ?
             ORDER BY es.orden, s.id
         """, (evento_id,)).fetchall()
+
+
+def set_contabilizable_en_evento(evento_id: int, seccion_id: int,
+                                  value: int) -> None:
+    with get_connection() as conn:
+        conn.execute(
+            "UPDATE evento_secciones SET contabilizable=? "
+            "WHERE evento_id=? AND seccion_id=?",
+            (value, evento_id, seccion_id)
+        )
+        conn.commit()
 
 
 def get_secciones_disponibles_para_evento(evento_id: int) -> list[sqlite3.Row]:

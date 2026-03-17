@@ -70,7 +70,7 @@ class ViewSecciones(tk.Frame):
         sb = ttk.Scrollbar(area, orient="vertical")
         sb.pack(side=tk.RIGHT, fill=tk.Y)
 
-        cols = ("nombre", "archivo", "tipo", "dur")
+        cols = ("nombre", "archivo", "tipo", "dur", "regen")
         self._tree = ttk.Treeview(
             area, columns=cols, show="headings",
             yscrollcommand=sb.set, selectmode="browse")
@@ -85,12 +85,14 @@ class ViewSecciones(tk.Frame):
                            command=lambda: self._sort_by("tipo"))
         self._tree.heading("dur",     text="Duración", anchor="e",
                            command=lambda: self._sort_by("dur"))
+        self._tree.heading("regen",   text="🔄 Regen.", anchor="center")
 
         # Anchos de columna
         self._tree.column("nombre",  anchor="w",      minwidth=120, width=200, stretch=True)
         self._tree.column("archivo", anchor="w",      minwidth=100, width=200, stretch=True)
         self._tree.column("tipo",    anchor="center", minwidth=70,  width=85,  stretch=False)
         self._tree.column("dur",     anchor="e",      minwidth=70,  width=80,  stretch=False)
+        self._tree.column("regen",   anchor="center", minwidth=55,  width=60,  stretch=False)
 
         # Tags de color por tipo
         self._tree.tag_configure("TTS",    foreground=C["tts_fg"])
@@ -166,7 +168,7 @@ class ViewSecciones(tk.Frame):
 
     def _update_heading_arrows(self) -> None:
         labels = {"nombre": "Nombre", "archivo": "Archivo",
-                  "tipo": "Tipo", "dur": "Duración"}
+                  "tipo": "Tipo", "dur": "Duración", "regen": "🔄 Regen."}
         for col, base in labels.items():
             if col == self._sort_col:
                 arrow = " ▲" if self._sort_asc else " ▼"
@@ -184,10 +186,11 @@ class ViewSecciones(tk.Frame):
             archivo = Path(ruta).name if ruta else "—"
             dur     = self._fmt(sec.get("duracion", 0))
             tag     = tipo if tipo in ("TTS", "Audio", "Sonido") else "none"
+            regen = "🔄" if sec.get("regenerar_antes") else ""
             self._tree.insert(
                 "", "end",
                 iid=str(sec["id"]),
-                values=(sec["nombre"], archivo, tipo or "—", dur),
+                values=(sec["nombre"], archivo, tipo or "—", dur, regen),
                 tags=(tag,))
 
         # Restaurar selección si sigue en la lista

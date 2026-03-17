@@ -221,9 +221,10 @@ def resolve_variables(text: str, cfg: dict, ctx: dict = None) -> str:
         "{pausa_duracion}":  _fmt_seg(cfg.get("pause_duration",    10)),
         "{pausa_alerta}":    _fmt_seg(cfg.get("pause_alert_before", 10)),
         # Evento (desde ctx)
-        "{evento}":          str(ctx.get("evento",          "")),
-        "{num_secciones}":   str(ctx.get("num_secciones",   "")),
-        "{duracion_total}":  str(ctx.get("duracion_total",  "")),
+        "{evento}":              str(ctx.get("evento",              "")),
+        "{num_secciones}":       str(ctx.get("num_secciones",       "")),
+        "{duracion_total}":      str(ctx.get("duracion_total",      "")),
+        "{dur_contabilizable}":  str(ctx.get("dur_contabilizable",  "")),
     }
     for token, value in replacements.items():
         text = text.replace(token, value)

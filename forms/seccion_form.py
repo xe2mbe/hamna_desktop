@@ -34,7 +34,8 @@ class SeccionForm(HDialog):
         self._sec_data     = None
 
         if seccion_id:
-            self._sec_data = db.get_seccion_by_id(seccion_id)
+            row = db.get_seccion_by_id(seccion_id)
+            self._sec_data = dict(row) if row else None
 
         self._build()
         if self._sec_data:
@@ -131,6 +132,21 @@ class SeccionForm(HDialog):
         self._badge(d, "🗣️  TTS — Convierte texto a audio con el motor configurado",
                     C["tts_bg"], C["tts_fg"])
 
+        # Opción: regenerar antes de transmitir
+        self._regen_var = tk.BooleanVar(
+            value=bool(self._sec_data.get("regenerar_antes", 0))
+            if self._sec_data else False)
+        regen_row = tk.Frame(d, bg=C["bg"])
+        regen_row.pack(fill=tk.X, pady=(6, 0))
+        tk.Checkbutton(regen_row, text="Regenerar audio antes de transmitir",
+                       variable=self._regen_var,
+                       bg=C["bg"], fg=C["text"], activebackground=C["bg"],
+                       selectcolor=C["input_bg"],
+                       font=FONTS["body"]).pack(side=tk.LEFT)
+        tk.Label(regen_row, text="(útil si el texto tiene variables)",
+                 font=FONTS["small"], bg=C["bg"], fg=C["text3"]).pack(
+            side=tk.LEFT, padx=(4, 0))
+
         tk.Label(d, text="TEXTO A CONVERTIR", font=FONTS["badge"],
                  bg=C["bg"], fg=C["text2"]).pack(anchor="w", pady=(8, 4))
 
@@ -161,9 +177,10 @@ class SeccionForm(HDialog):
                 ("{pausa_alerta}",    "Alerta antes de pausa"),
             ]),
             ("📻 Evento", [
-                ("{evento}",          "Nombre del evento"),
-                ("{num_secciones}",   "Cantidad de secciones"),
-                ("{duracion_total}",  "Duración total"),
+                ("{evento}",             "Nombre del evento"),
+                ("{num_secciones}",      "Cantidad de secciones contabilizables"),
+                ("{duracion_total}",     "Duración total de la transmisión"),
+                ("{dur_contabilizable}", "Duración solo de secciones contabilizables"),
             ]),
         ]
 
@@ -182,6 +199,28 @@ class SeccionForm(HDialog):
                                 command=lambda t=token: self._insert_var(t))
                 btn.pack(side=tk.LEFT, padx=(0, 4))
 
+        # ── Evento de referencia (para resolver variables de evento) ─────────
+        ev_row = tk.Frame(d, bg=C["bg"])
+        ev_row.pack(fill=tk.X, pady=(8, 0))
+        tk.Label(ev_row, text="EVENTO DE REFERENCIA", font=FONTS["badge"],
+                 bg=C["bg"], fg=C["text2"]).pack(side=tk.LEFT)
+        tk.Label(ev_row, text="(para {evento}, {num_secciones}, {duracion_total})",
+                 font=FONTS["small"], bg=C["bg"], fg=C["text3"]).pack(
+            side=tk.LEFT, padx=(6, 0))
+
+        eventos = db.get_all_eventos()
+        self._ev_ctx_map = {}
+        ev_names = ["(ninguno)"]
+        for e in eventos:
+            num = e["numero"]
+            label = f"{e['nombre']} #{num}" if num else e["nombre"]
+            self._ev_ctx_map[label] = e
+            ev_names.append(label)
+        self._ev_ctx_var = tk.StringVar(value="(ninguno)")
+        ttk.Combobox(d, textvariable=self._ev_ctx_var,
+                     values=ev_names, state="readonly").pack(
+            fill=tk.X, pady=(4, 0))
+
         self._tts_status = tk.Label(d, text="", font=FONTS["small"],
                                      bg=C["bg"], fg=C["text2"])
         self._tts_status.pack(anchor="w", pady=(6, 0))
@@ -196,6 +235,28 @@ class SeccionForm(HDialog):
             ("Guardar",       "success", self._save_tts),
         ])
 
+    def _build_ctx(self) -> dict:
+        """Construye el contexto de variables de evento a partir del selector."""
+        ev_label = self._ev_ctx_var.get()
+        if ev_label == "(ninguno)" or ev_label not in self._ev_ctx_map:
+            return {}
+        ev = self._ev_ctx_map[ev_label]
+        secs = db.get_secciones_by_evento(ev["id"])
+        dur_total = sum(s["duracion"] or 0 for s in secs)
+        dur_cont  = sum(s["duracion"] or 0 for s in secs if s["contabilizable"])
+        num_cont  = sum(1 for s in secs if s["contabilizable"])
+
+        def _fmt(seg):
+            m, s = divmod(int(seg), 60)
+            return f"{m} minutos con {s} segundos" if s else f"{m} minutos"
+
+        return {
+            "evento":            ev["nombre"],
+            "num_secciones":     str(num_cont),
+            "duracion_total":    _fmt(dur_total),
+            "dur_contabilizable": _fmt(dur_cont),
+        }
+
     def _preview_vars(self) -> None:
         """Muestra el texto con variables resueltas tal como lo recibirá el TTS."""
         from modules.tts.tts_manager import resolve_variables
@@ -205,60 +266,25 @@ class SeccionForm(HDialog):
             messagebox.showinfo("Vista previa", "El texto está vacío.", parent=self)
             return
 
-        # Cargar eventos para que el usuario elija contexto
-        eventos = db.get_all_eventos()
-        ev_map  = {f"{r['nombre']}": r for r in eventos}
+        resolved = resolve_variables(raw, self.cfg, self._build_ctx())
 
         win = tk.Toplevel(self)
         win.title("Vista previa — texto resuelto")
-        win.geometry("520x340")
+        win.geometry("520x260")
         win.configure(bg=C["bg"])
         win.resizable(False, False)
         win.grab_set()
 
-        # Selector de evento (para resolver {evento}, {num_secciones}, etc.)
-        sel_frame = tk.Frame(win, bg=C["bg"])
-        sel_frame.pack(fill=tk.X, padx=16, pady=(14, 6))
-        tk.Label(sel_frame, text="Evento de referencia:",
-                 font=FONTS["badge"], bg=C["bg"], fg=C["text2"]).pack(side=tk.LEFT)
-
-        ev_var = tk.StringVar(value=list(ev_map)[0] if ev_map else "")
-        ev_combo = ttk.Combobox(sel_frame, textvariable=ev_var,
-                                values=list(ev_map), state="readonly", width=28)
-        ev_combo.pack(side=tk.LEFT, padx=(8, 0))
-
-        # Área de resultado
         tk.Label(win, text="Texto que recibirá el motor TTS:",
                  font=FONTS["badge"], bg=C["bg"], fg=C["text2"]).pack(
-            anchor="w", padx=16)
+            anchor="w", padx=16, pady=(14, 4))
 
         box = tk.Text(win, height=7, wrap="word", font=FONTS["body"],
                       bg=C["input_bg"], fg=C["text"], relief="flat",
-                      padx=10, pady=8)
-        box.pack(fill=tk.X, padx=16, pady=(4, 0))
-
-        def _refresh(*_):
-            ev_name = ev_var.get()
-            ctx = {}
-            if ev_name and ev_name in ev_map:
-                row = ev_map[ev_name]
-                secs = db.get_secciones_by_evento(row["id"])
-                dur_total = sum(s["duracion"] or 0 for s in secs)
-                m, s2 = divmod(int(dur_total), 60)
-                ctx = {
-                    "evento":         row["nombre"],
-                    "num_secciones":  str(len(secs)),
-                    "duracion_total": f"{m} minutos con {s2} segundos" if s2
-                                      else f"{m} minutos",
-                }
-            resolved = resolve_variables(raw, self.cfg, ctx)
-            box.config(state="normal")
-            box.delete("1.0", tk.END)
-            box.insert("1.0", resolved)
-            box.config(state="disabled")
-
-        ev_combo.bind("<<ComboboxSelected>>", _refresh)
-        _refresh()   # mostrar con el primer evento al abrir
+                      padx=10, pady=8, state="normal")
+        box.pack(fill=tk.X, padx=16)
+        box.insert("1.0", resolved)
+        box.config(state="disabled")
 
         HButton(win, "Cerrar", command=win.destroy,
                 variant="muted").pack(pady=10)
@@ -296,7 +322,8 @@ class SeccionForm(HDialog):
 
         convert_text(self._tts_text.get("1.0", tk.END).strip(),
                      self.cfg, _out,
-                     on_done=lambda ok, r: self.after(0, done, ok, r))
+                     on_done=lambda ok, r: self.after(0, done, ok, r),
+                     ctx=self._build_ctx())
 
     def _play_tts(self) -> None:
         if not self._tts_path or not Path(self._tts_path).is_file():
@@ -315,19 +342,22 @@ class SeccionForm(HDialog):
             messagebox.showwarning("Sin audio", "Convierte el texto primero.",
                                    parent=self)
             return
-        texto = self._tts_text.get("1.0", tk.END).strip()
+        texto   = self._tts_text.get("1.0", tk.END).strip()
         tipo_id = self._tipos_map["TTS"]
-        dur = get_audio_duration(self._tts_path)
+        dur     = get_audio_duration(self._tts_path)
+        regen   = self._regen_var.get()
         try:
             if self.seccion_id:
                 db.update_seccion(self.seccion_id, nombre,
-                                   texto_tts=texto, duracion=dur)
+                                   texto_tts=texto, duracion=dur,
+                                   regenerar_antes=regen)
                 dest = save_audio_file(self._tts_path,
                                        self.seccion_id, nombre)
                 db.update_seccion_ruta(self.seccion_id, dest)
             else:
                 sec_id = db.insert_seccion(nombre, tipo_id,
-                                            texto_tts=texto, duracion=dur)
+                                            texto_tts=texto, duracion=dur,
+                                            regenerar_antes=regen)
                 dest = save_audio_file(self._tts_path, sec_id, nombre)
                 db.update_seccion_ruta(sec_id, dest)
             self._finish(nombre)

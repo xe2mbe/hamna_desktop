@@ -212,7 +212,7 @@ class MainWindow(tk.Tk):
             font=FONTS["small"], bg=C["surface"], fg=C["text2"])
         self._status_lbl.pack(side=tk.LEFT, padx=12)
 
-        tk.Label(sb, text="HAMNA Desktop v1.0.0  |  by Radio Club Guadiana A.C.",
+        tk.Label(sb, text="HAMNA Desktop v1.1.0  |  by Radio Club Guadiana A.C.",
                  font=FONTS["small"], bg=C["surface"],
                  fg=C["text3"]).pack(side=tk.RIGHT, padx=(0, 12))
 
@@ -402,6 +402,12 @@ class MainWindow(tk.Tk):
         if self._tx_cur_sec >= len(self._tx_secciones):
             return
         sec = self._tx_secciones[self._tx_cur_sec]
+
+        # Si la sección pide regenerar antes de transmitir, hacerlo ahora
+        if sec.get("regenerar_antes") and sec.get("texto_tts"):
+            self._regenerar_y_reproducir(sec)
+            return
+
         if sec["ruta_archivo"]:
             if Path(sec["ruta_archivo"]).is_file():
                 self._tx_section_start_ms = 0
@@ -409,6 +415,53 @@ class MainWindow(tk.Tk):
                     sec["ruta_archivo"],
                     on_finished=lambda: self.after(0, self._on_sec_audio_finished)
                 )
+
+    def _regenerar_y_reproducir(self, sec: dict) -> None:
+        """Regenera el TTS de la sección con variables actuales y luego la reproduce."""
+        from modules.tts.tts_manager import convert_text
+
+        ev = next((e for e in db.get_all_eventos()
+                   if e["id"] == self._tx_evento_id), None)
+        ctx = {}
+        if ev:
+            secs  = self._tx_secciones
+            dur_t = sum(s["duracion"] or 0 for s in secs)
+            m, s2 = divmod(int(dur_t), 60)
+            num_cont  = sum(1 for s in secs if s.get("contabilizable", 1))
+            dur_cont  = sum(s["duracion"] or 0 for s in secs
+                            if s.get("contabilizable", 1))
+            dc_m, dc_s = divmod(int(dur_cont), 60)
+            ctx = {
+                "evento":            ev["nombre"],
+                "num_secciones":     str(num_cont),
+                "duracion_total":    f"{m} minutos con {s2} segundos" if s2
+                                     else f"{m} minutos",
+                "dur_contabilizable": f"{dc_m} minutos con {dc_s} segundos" if dc_s
+                                      else f"{dc_m} minutos",
+            }
+
+        out = Path(sec["ruta_archivo"]) if sec.get("ruta_archivo") else \
+              Path("media/audios") / f"regen_{sec['id']}.mp3"
+
+        def on_done(ok: bool, result: str) -> None:
+            if ok:
+                self._tx_section_start_ms = 0
+                self._player.play(
+                    result,
+                    on_finished=lambda: self.after(0, self._on_sec_audio_finished)
+                )
+            else:
+                log.error("Regeneración TTS falló: %s — reproduciendo versión guardada", result)
+                # Fallback: reproducir el audio guardado aunque esté desactualizado
+                if sec.get("ruta_archivo") and Path(sec["ruta_archivo"]).is_file():
+                    self._player.play(
+                        sec["ruta_archivo"],
+                        on_finished=lambda: self.after(0, self._on_sec_audio_finished)
+                    )
+                else:
+                    self.after(0, self._on_sec_audio_finished)
+
+        convert_text(sec["texto_tts"], self.cfg, out, on_done=on_done, ctx=ctx)
 
     def _on_sec_audio_finished(self) -> None:
         """Llamado por el reproductor cuando un archivo termina naturalmente.

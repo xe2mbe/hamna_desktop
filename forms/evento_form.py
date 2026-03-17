@@ -2,8 +2,10 @@
 HAMNA Desktop — Formulario Nuevo / Editar Evento
 Nombre + Tipo + gestión de secciones en una sola ventana.
 """
+import datetime
 import tkinter as tk
 from tkinter import ttk, messagebox
+from tkcalendar import DateEntry
 import database as db
 from ui_theme import C, FONTS, HButton, HDialog
 from forms.seccion_form import SeccionForm
@@ -25,7 +27,8 @@ class EventoForm(HDialog):
 
         if evento_id:
             evs = db.get_all_eventos()
-            self._ev_data = next((e for e in evs if e["id"] == evento_id), None)
+            row = next((e for e in evs if e["id"] == evento_id), None)
+            self._ev_data = dict(row) if row else None
             # Pre-cargar secciones ya asignadas
             for sec in db.get_secciones_by_evento(evento_id):
                 self._pending.append(dict(sec))
@@ -62,12 +65,55 @@ class EventoForm(HDialog):
             state="readonly", font=FONTS["body"])
         self._combo.grid(row=1, column=2, sticky="ew")
 
-        # Prefill
+        # Prefill nombre + tipo
         if self._ev_data:
             self._e_nombre.insert(0, self._ev_data["nombre"])
             self._combo.set(self._ev_data["tipo"] or "")
         elif self._tipos:
             self._combo.current(0)
+
+        # ── Numeración de edición ─────────────────────────────────────────────
+        self._chk_num_var = tk.BooleanVar(value=False)
+        tk.Checkbutton(
+            top, text="Asignar número de edición",
+            variable=self._chk_num_var,
+            bg=C["bg"], fg=C["text"], activebackground=C["bg"],
+            selectcolor=C["input_bg"], font=FONTS["body"],
+            command=self._on_chk_num_toggle
+        ).grid(row=2, column=0, columnspan=3, sticky="w", pady=(12, 0))
+
+        self._num_row = tk.Frame(top, bg=C["bg"])
+        self._num_row.grid(row=3, column=0, columnspan=3, sticky="ew", pady=(4, 0))
+        self._num_row.grid_remove()
+
+        tk.Label(self._num_row, text="NÚMERO #", font=FONTS["badge"],
+                 bg=C["bg"], fg=C["text2"]).pack(side=tk.LEFT)
+        self._spin_numero = ttk.Spinbox(self._num_row, from_=1, to=999, width=6)
+        self._spin_numero.set(1)
+        self._spin_numero.pack(side=tk.LEFT, padx=(4, 16))
+
+        tk.Label(self._num_row, text="Sugerir por fecha:",
+                 font=FONTS["small"], bg=C["bg"], fg=C["text3"]).pack(side=tk.LEFT)
+        self._cal_fecha_num = DateEntry(
+            self._num_row, width=11, date_pattern="dd/MM/yyyy",
+            locale="es_MX", firstweekday="sunday",
+            background="#0d6efd", foreground="white",
+            headersbackground=C["surface2"], headersforeground=C["text"],
+            selectbackground="#0d6efd", selectforeground="white",
+            normalbackground=C["surface"], normalforeground=C["text"],
+            weekendbackground=C["surface"], weekendforeground=C["text2"],
+            othermonthbackground=C["bg"], othermonthforeground=C["text3"],
+        )
+        self._cal_fecha_num.set_date(datetime.date.today())
+        self._cal_fecha_num.pack(side=tk.LEFT, padx=(4, 4))
+        HButton(self._num_row, "Calcular", command=self._sugerir_numero,
+                variant="ghost").pack(side=tk.LEFT)
+
+        # Prefill numero si estamos editando
+        if self._ev_data and self._ev_data.get("numero"):
+            self._chk_num_var.set(True)
+            self._spin_numero.set(self._ev_data["numero"])
+            self._num_row.grid()
 
         # ── Separador + cabecera secciones ────────────────────────────────────
         tk.Frame(self, bg=C["border"], height=1).pack(fill=tk.X)
@@ -118,6 +164,21 @@ class EventoForm(HDialog):
         self._sec_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 
         self._render_pending()
+
+    # ── Numeración ────────────────────────────────────────────────────────────
+    def _on_chk_num_toggle(self) -> None:
+        if self._chk_num_var.get():
+            self._num_row.grid()
+        else:
+            self._num_row.grid_remove()
+
+    def _sugerir_numero(self) -> None:
+        fecha = self._cal_fecha_num.get_date()
+        first = datetime.date(fecha.year, 1, 1)
+        days_ahead = (fecha.weekday() - first.weekday()) % 7
+        first_occ = first + datetime.timedelta(days=days_ahead)
+        numero = (fecha - first_occ).days // 7 + 1 if first_occ <= fecha else 0
+        self._spin_numero.set(numero)
 
     # ── Render lista secciones ─────────────────────────────────────────────────
     def _render_pending(self) -> None:
@@ -171,7 +232,8 @@ class EventoForm(HDialog):
             btns = tk.Frame(row, bg=C["bg"])
             btns.pack(side=tk.RIGHT, padx=8)
 
-            sec_id = sec["id"]
+            sec_id  = sec["id"]
+            is_cont = sec.get("contabilizable", 1)
             tk.Button(btns, text="↑", font=FONTS["small"],
                       bg=C["surface2"], fg=C["text2"],
                       relief="flat", bd=0, padx=5, pady=2, cursor="hand2",
@@ -181,6 +243,14 @@ class EventoForm(HDialog):
                       bg=C["surface2"], fg=C["text2"],
                       relief="flat", bd=0, padx=5, pady=2, cursor="hand2",
                       command=lambda idx=i: self._move(idx, 1)
+                      ).pack(side=tk.LEFT, padx=1)
+            tk.Button(btns,
+                      text="C" if is_cont else "c",
+                      font=FONTS["small"],
+                      bg=C.get("success", "#3fb950") if is_cont else C["surface2"],
+                      fg=C["bg"] if is_cont else C["text3"],
+                      relief="flat", bd=0, padx=5, pady=2, cursor="hand2",
+                      command=lambda idx=i: self._toggle_pending_cont(idx)
                       ).pack(side=tk.LEFT, padx=1)
             tk.Button(btns, text="✖", font=FONTS["small"],
                       bg=C["surface2"], fg=C["danger"],
@@ -204,6 +274,11 @@ class EventoForm(HDialog):
         self._pending.pop(idx)
         self._render_pending()
 
+    def _toggle_pending_cont(self, idx: int) -> None:
+        cur = self._pending[idx].get("contabilizable", 1)
+        self._pending[idx]["contabilizable"] = 0 if cur else 1
+        self._render_pending()
+
     def _agregar_de_biblioteca(self) -> None:
         """Abre un selector con las secciones de la biblioteca no agregadas aún."""
         ids_ya = {s["id"] for s in self._pending}
@@ -221,7 +296,9 @@ class EventoForm(HDialog):
     def _on_secs_seleccionadas(self, secs: list) -> None:
         for sec in secs:
             if not any(p["id"] == sec["id"] for p in self._pending):
-                self._pending.append(dict(sec))
+                s = dict(sec)
+                s.setdefault("contabilizable", 1)
+                self._pending.append(s)
         self._render_pending()
 
     def _nueva_seccion(self) -> None:
@@ -233,7 +310,9 @@ class EventoForm(HDialog):
                       if s["id"] not in before_ids]
             for sec in nuevas:
                 if not any(p["id"] == sec["id"] for p in self._pending):
-                    self._pending.append(dict(sec))
+                    s = dict(sec)
+                    s.setdefault("contabilizable", 1)
+                    self._pending.append(s)
             self._render_pending()
 
         SeccionForm(self, cfg=self.cfg, on_saved=on_saved)
@@ -253,10 +332,17 @@ class EventoForm(HDialog):
                 "Selecciona un tipo de evento.", parent=self)
             return
 
+        numero = None
+        if self._chk_num_var.get():
+            try:
+                numero = int(self._spin_numero.get())
+            except (ValueError, TypeError):
+                numero = None
+
         tipo_id = self._tipos_map.get(tipo)
         try:
             if self.evento_id:
-                db.update_evento(self.evento_id, nombre, tipo_id)
+                db.update_evento(self.evento_id, nombre, tipo_id, numero)
                 ev_id = self.evento_id
                 # Reemplazar secciones asignadas por el orden actual
                 with db.get_connection() as conn:
@@ -265,14 +351,14 @@ class EventoForm(HDialog):
                         (ev_id,))
                     conn.commit()
             else:
-                ev_id = db.insert_evento(nombre, tipo_id)
+                ev_id = db.insert_evento(nombre, tipo_id, numero)
 
             for orden, sec in enumerate(self._pending, start=1):
                 with db.get_connection() as conn:
                     conn.execute(
                         "INSERT OR IGNORE INTO evento_secciones "
-                        "(evento_id, seccion_id, orden) VALUES (?,?,?)",
-                        (ev_id, sec["id"], orden))
+                        "(evento_id, seccion_id, orden, contabilizable) VALUES (?,?,?,?)",
+                        (ev_id, sec["id"], orden, sec.get("contabilizable", 1)))
                     conn.commit()
 
             if callable(self.on_saved):

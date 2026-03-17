@@ -225,21 +225,25 @@ class ViewEventos(tk.Frame):
                 sec_sb.pack(side=tk.RIGHT, fill=tk.Y, before=self._sec_tree)
             sec_sb.set(first, last)
 
-        sec_cols = ("orden", "nombre", "tipo", "dur")
+        sec_cols = ("orden", "nombre", "tipo", "dur", "regen", "cont")
         self._sec_tree = ttk.Treeview(
             sec_area, columns=sec_cols, show="headings",
             yscrollcommand=_sec_yscroll, selectmode="browse")
         sec_sb.config(command=self._sec_tree.yview)
 
-        self._sec_tree.heading("orden",  text="#",      anchor="center")
-        self._sec_tree.heading("nombre", text="Nombre", anchor="w")
-        self._sec_tree.heading("tipo",   text="Tipo",   anchor="center")
-        self._sec_tree.heading("dur",    text="Duración", anchor="e")
+        self._sec_tree.heading("orden",  text="#",         anchor="center")
+        self._sec_tree.heading("nombre", text="Nombre",    anchor="w")
+        self._sec_tree.heading("tipo",   text="Tipo",      anchor="center")
+        self._sec_tree.heading("dur",    text="Duración",  anchor="e")
+        self._sec_tree.heading("regen",  text="🔄 Regen.", anchor="center")
+        self._sec_tree.heading("cont",   text="Cont.",    anchor="center")
 
-        self._sec_tree.column("orden",  anchor="center", minwidth=25, width=30, stretch=False)
+        self._sec_tree.column("orden",  anchor="center", minwidth=25, width=30,  stretch=False)
         self._sec_tree.column("nombre", anchor="w",      minwidth=100, width=160, stretch=True)
         self._sec_tree.column("tipo",   anchor="center", minwidth=60,  width=75,  stretch=False)
         self._sec_tree.column("dur",    anchor="e",      minwidth=70,  width=80,  stretch=False)
+        self._sec_tree.column("regen",  anchor="center", minwidth=55,  width=60,  stretch=False)
+        self._sec_tree.column("cont",   anchor="center", minwidth=45,  width=50,  stretch=False)
 
         self._sec_tree.tag_configure("TTS",    foreground=C["tts_fg"])
         self._sec_tree.tag_configure("Audio",  foreground=C["audio_fg"])
@@ -305,6 +309,13 @@ class ViewEventos(tk.Frame):
             self._sec_ctx.add_command(label="↓  Mover abajo",
                                       command=lambda: self._mover_sel(1))
             self._sec_ctx.add_separator()
+            # Etiqueta dinámica según estado actual
+            cont_val = self._sec_tree.set(iid, "cont")
+            toggle_lbl = "🔢  Quitar del conteo" if cont_val == "✓" \
+                         else "🔢  Incluir en conteo"
+            self._sec_ctx.add_command(label=toggle_lbl,
+                                      command=self._toggle_contabilizable_sel)
+            self._sec_ctx.add_separator()
             self._sec_ctx.add_command(label="✖  Quitar del evento",
                                       command=self._quitar_seccion_sel)
         else:
@@ -320,6 +331,7 @@ class ViewEventos(tk.Frame):
         self._btn_agregar.pack_forget()
         self._btn_transmitir.pack_forget()
         self._sec_tree.column("orden", width=0, minwidth=0, stretch=False)
+        self._sec_tree.column("cont",  width=0, minwidth=0, stretch=False)
         self._load_biblioteca()
 
     def _set_mode_evento(self, ev_id: int, ev_nombre: str) -> None:
@@ -328,6 +340,7 @@ class ViewEventos(tk.Frame):
         self._btn_agregar.pack(side=tk.RIGHT, padx=(4, 0))
         self._btn_transmitir.pack(side=tk.RIGHT, padx=(0, 6))
         self._sec_tree.column("orden", width=30, minwidth=25, stretch=False)
+        self._sec_tree.column("cont",  width=50, minwidth=45, stretch=False)
         self._load_secciones(ev_id)
 
     # ── Carga de datos ─────────────────────────────────────────────────────────
@@ -359,8 +372,10 @@ class ViewEventos(tk.Frame):
             secs = db.get_secciones_by_evento(ev["id"])
             dur  = sum(s["duracion"] for s in secs)
             tag  = "on_air" if on_air_id == ev["id"] else "normal"
+            num  = ev["numero"]
+            nombre_display = f"{ev['nombre']} #{num}" if num else ev["nombre"]
             self._ev_tree.insert("", "end", iid=str(ev["id"]),
-                values=(ev["nombre"], ev["tipo"] or "—", self._fmt_dur(dur)),
+                values=(nombre_display, ev["tipo"] or "—", self._fmt_dur(dur)),
                 tags=(tag,))
 
         if sel_iid and sel_iid in self._ev_tree.get_children():
@@ -396,8 +411,10 @@ class ViewEventos(tk.Frame):
             iid   = f"e{i}" if mode == "evento" else str(sec["id"])
             self._sec_id_map[iid] = sec["id"]
             self._sec_items.append(iid)
+            regen = "🔄" if sec.get("regenerar_antes") else ""
+            cont  = "✓"  if sec.get("contabilizable", 1) else "—"
             self._sec_tree.insert("", "end", iid=iid,
-                values=(orden, sec["nombre"], tipo or "—", dur),
+                values=(orden, sec["nombre"], tipo or "—", dur, regen, cont),
                 tags=(tag,))
 
     def _sec_id_from_sel(self) -> int | None:
@@ -511,6 +528,16 @@ class ViewEventos(tk.Frame):
             self._sec_sel_iid = None
             self._load_secciones(self._selected_ev)
             self._render_eventos(self._all_eventos)
+
+    def _toggle_contabilizable_sel(self) -> None:
+        sec_id = self._sec_id_from_sel()
+        if not sec_id or not self._selected_ev:
+            return
+        iid = self._sec_sel_iid or (self._sec_tree.selection() or [None])[0]
+        cur = self._sec_tree.set(iid, "cont") if iid else "✓"
+        new_val = 0 if cur == "✓" else 1
+        db.set_contabilizable_en_evento(self._selected_ev, sec_id, new_val)
+        self._load_secciones(self._selected_ev)
 
     def _mover_sel(self, direction: int) -> None:
         sec_id = self._sec_id_from_sel()
