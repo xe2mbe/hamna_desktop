@@ -490,10 +490,9 @@ class MainWindow(tk.Tk):
             log.debug("_advance_section ignorado — pause_state=%s", self._tx_pause_state)
             return
         if self._tx_cur_sec < len(self._tx_secciones) - 1:
-            self._tx_cur_sec      += 1
-            self._tx_sec_elapsed   = 0.0
-            self._tx_alert_played  = False
-            self._tx_pause_state   = "section_gap"
+            self._tx_cur_sec     += 1
+            self._tx_sec_elapsed  = 0.0
+            self._tx_pause_state  = "section_gap"
             # PTT OFF durante el intervalo entre secciones
             self.ptt.ptt_off()
             self._np.set_ptt_state(False)
@@ -507,8 +506,10 @@ class MainWindow(tk.Tk):
         """Tras el intervalo entre secciones: PTT ON → retardo → audio."""
         if self._tx_stop_flag:
             return
-        self._tx_sec_elapsed = 0.0
-        self._tx_pause_state = "tx"
+        self._tx_sec_elapsed  = 0.0
+        self._tx_seg_elapsed  = 0.0   # reiniciar contador de pausa al iniciar nueva sección
+        self._tx_alert_played = False
+        self._tx_pause_state  = "tx"
         self.ptt.ptt_on()
         self._np.set_ptt_state(True)
         ptt_ms = self._ptt_delay_ms()
@@ -812,7 +813,7 @@ class MainWindow(tk.Tk):
         self._set_status("Transmitiendo…")
         self._tx_tick()  # reanudar el loop de tick
 
-    # ── Callbacks ─────────────────────────────────────────────────────────────
+    # ── Callbacks ──────────────────��──────────────────────────────────────────
     def _on_cfg_saved(self, new_cfg: dict) -> None:
         self.cfg = new_cfg
         self.ptt.reload_cfg(new_cfg)
