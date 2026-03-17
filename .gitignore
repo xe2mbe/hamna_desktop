@@ -21,10 +21,19 @@ hamna.log
 # Archivos de audio temporales
 output_temp.mp3
 output_temp.wav
-=2.6.0
+tts_form_*.mp3
+tts_preview*.mp3
+test_*.mp3
 
-# Configuración local (contiene rutas absolutas de la máquina)
-# settings.json se incluye como plantilla de referencia
+# Configuración local (contiene claves API y rutas absolutas — NO subir)
+settings.json
+
+# Base de datos WAL
+hamna.db-shm
+hamna.db-wal
+
+# Claude Code
+.claude/
 
 # Archivos de sistema
 Thumbs.db
