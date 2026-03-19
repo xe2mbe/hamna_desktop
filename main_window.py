@@ -835,6 +835,8 @@ class MainWindow(tk.Tk):
                     "Hay una transmisión activa. ¿Cerrar de todas formas?"):
                 return
         self._tx_stop(silent=True)
+        # PTT OFF de seguridad a TODOS los métodos antes de desconectar
+        self.ptt.ptt_off_all()
         self.ptt.serial.disconnect()
         self.ptt.ami.disconnect()
         self.destroy()

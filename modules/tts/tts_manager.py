@@ -26,13 +26,22 @@ def convert_pyttsx3(text: str, cfg: dict,
     except ImportError:
         return False, "pyttsx3 no instalado — ejecuta: pip install pyttsx3"
 
+    rate_val   = int(cfg.get("tts_rate",   175))
+    vol_val    = int(cfg.get("tts_volume", 90))
+    voice_id   = cfg.get("tts_voice_id", "")
+    log.info("[TTS-LOCAL] Iniciando síntesis | chars=%d | rate=%d wpm | vol=%d%% | voz=%s",
+             len(text), rate_val, vol_val, voice_id or "auto-español")
+
     try:
+        import time as _time
+        _t0 = _time.monotonic()
+
         engine = pyttsx3.init()
-        engine.setProperty("rate",   int(cfg.get("tts_rate", 175)))
-        engine.setProperty("volume", float(cfg.get("tts_volume", 90)) / 100.0)
+        engine.setProperty("rate",   rate_val)
+        engine.setProperty("volume", vol_val / 100.0)
 
         # Seleccionar voz
-        voice_id = cfg.get("tts_voice_id", "")
+        selected_voice = voice_id
         if voice_id:
             engine.setProperty("voice", voice_id)
         else:
@@ -40,6 +49,7 @@ def convert_pyttsx3(text: str, cfg: dict,
             for v in engine.getProperty("voices"):
                 if any(lang in v.id.lower() for lang in ["spanish", "es_", "es-"]):
                     engine.setProperty("voice", v.id)
+                    selected_voice = v.id
                     break
 
         # Guardar a WAV primero
@@ -48,14 +58,32 @@ def convert_pyttsx3(text: str, cfg: dict,
         engine.runAndWait()
 
         if not Path(wav_path).is_file():
+            log.error("[TTS-LOCAL] Error: pyttsx3 no generó el archivo de audio")
             return False, "pyttsx3 no generó el archivo de audio"
 
         # Intentar WAV → MP3
         final_path = _wav_to_mp3(wav_path, str(output_path))
+        elapsed = _time.monotonic() - _t0
+
+        # Calcular duración del audio generado
+        try:
+            from mutagen.mp3 import MP3
+            from mutagen.wave import WAVE
+            _fp = Path(final_path)
+            if _fp.suffix.lower() == ".mp3":
+                dur = MP3(final_path).info.length
+            else:
+                dur = WAVE(final_path).info.length
+            m, s = divmod(int(dur), 60)
+            log.info("[TTS-LOCAL] OK | dur_audio=%d:%02d | elapsed=%.1fs | voz=%s | archivo=%s",
+                     m, s, elapsed, selected_voice or "?", final_path)
+        except Exception:
+            log.info("[TTS-LOCAL] OK | elapsed=%.1fs | archivo=%s", elapsed, final_path)
+
         return True, str(final_path)
 
     except Exception as e:
-        log.error(f"pyttsx3 error: {e}")
+        log.error(f"[TTS-LOCAL] Error: {e}")
         return False, str(e)
 
 
@@ -100,6 +128,10 @@ def convert_azure(text: str, cfg: dict,
     pitch  = int(cfg.get("azure_pitch", 0))
     fmt    = cfg.get("azure_format", "audio-24khz-160kbitrate-mono-mp3")
 
+    log.info("[TTS-AZURE] Iniciando síntesis | región=%s | voz=%s | estilo=%s | "
+             "rate=%d%% | pitch=%d Hz | formato=%s | chars=%d",
+             region, voice, style, rate, pitch, fmt, len(text))
+
     # Detectar locale a partir de la voz (primeros 5 chars: "es-MX")
     locale = voice[:5] if len(voice) >= 5 else "es-MX"
 
@@ -139,6 +171,9 @@ def convert_azure(text: str, cfg: dict,
         "User-Agent": "HAMNA-Desktop/1.0",
     }
 
+    import time as _time
+    _t0 = _time.monotonic()
+
     try:
         req = urllib.request.Request(
             endpoint,
@@ -149,18 +184,31 @@ def convert_azure(text: str, cfg: dict,
         with urllib.request.urlopen(req, timeout=20) as resp:
             audio_bytes = resp.read()
 
+        elapsed = _time.monotonic() - _t0
         output_path = Path(output_path)
         output_path.parent.mkdir(parents=True, exist_ok=True)
         output_path.write_bytes(audio_bytes)
-        log.info("Azure TTS REST OK — %d bytes → %s", len(audio_bytes), output_path)
+
+        # Calcular duración del MP3 generado
+        try:
+            from mutagen.mp3 import MP3
+            dur = MP3(str(output_path)).info.length
+            m, s = divmod(int(dur), 60)
+            log.info("[TTS-AZURE] OK | bytes=%d | dur_audio=%d:%02d | elapsed=%.1fs | "
+                     "voz=%s | estilo=%s | archivo=%s",
+                     len(audio_bytes), m, s, elapsed, voice, style, output_path)
+        except Exception:
+            log.info("[TTS-AZURE] OK | bytes=%d | elapsed=%.1fs | voz=%s | archivo=%s",
+                     len(audio_bytes), elapsed, voice, output_path)
+
         return True, str(output_path)
 
     except urllib.error.HTTPError as e:
         body = e.read().decode(errors="ignore")[:300]
-        log.error("Azure TTS HTTP %s: %s", e.code, body)
+        log.error("[TTS-AZURE] HTTP %s | voz=%s | región=%s | error=%s", e.code, voice, region, body)
         return False, f"Azure TTS HTTP {e.code}: {body}"
     except Exception as e:
-        log.error("Azure TTS error: %s", e)
+        log.error("[TTS-AZURE] Error | voz=%s | región=%s | %s", voice, region, e)
         return False, str(e)
 
 
@@ -245,11 +293,15 @@ def convert_text(text: str, cfg: dict,
 
     def _run():
         resolved = resolve_variables(text, cfg, ctx)
-        engine = cfg.get("tts_engine", "pyttsx3")
+        engine   = cfg.get("tts_engine", "pyttsx3")
+        preview  = resolved[:80] + ("…" if len(resolved) > 80 else "")
+        log.info("[TTS] Motor=%s | texto='%s'", engine, preview)
         if engine == "azure":
             ok, result = convert_azure(resolved, cfg, output_path)
         else:
             ok, result = convert_pyttsx3(resolved, cfg, output_path)
+        if not ok:
+            log.error("[TTS] Fallo en síntesis | motor=%s | error=%s", engine, result)
         if callable(on_done):
             on_done(ok, result)
 

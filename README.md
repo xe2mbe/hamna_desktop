@@ -185,11 +185,10 @@ URL Base: http://192.168.1.37   Ruta ON: /ptt_on   Ruta OFF: /ptt_off
 
 ## Empaquetado como .exe
 
-```bat
+```powershell
 pip install pyinstaller
-pyinstaller --onefile --windowed --name "HAMNA Desktop" ^
-    --add-data "media;media" main.py
-:: El ejecutable queda en dist\HAMNA Desktop.exe
+pyinstaller --onefile --windowed --name "HAMNA Desktop" --add-data "media:media" main.py
+# El ejecutable queda en dist\HAMNA Desktop.exe
 ```
 
 ---

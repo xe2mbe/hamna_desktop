@@ -54,35 +54,64 @@ class PTTManager:
         self._cfg = cfg
         self._apply_cfg(cfg)
 
-    # ── PTT activo ────────────────────────────────────────────────────────────
+    # ── Métodos habilitados ───────────────────────────────────────────────────
+    def _enabled_methods(self) -> list[str]:
+        """Retorna los métodos PTT actualmente habilitados según settings."""
+        _defaults = {"serial": True, "ami": False, "api": False}
+        return [m for m in ("serial", "ami", "api")
+                if self._cfg.get(f"{m}_enabled", _defaults[m])]
+
     def _active_method(self) -> str:
+        """Método primario (para is_ptt_on / is_connected / banner UI)."""
         return self._cfg.get("ptt_method", "serial")
 
+    # ── Dispatch a todos los métodos habilitados ──────────────────────────────
+    def _dispatch(self, action: str) -> tuple[bool, str]:
+        """Envía PTT ON u OFF a **todos** los métodos habilitados en paralelo."""
+        methods = self._enabled_methods()
+        if not methods:
+            log.debug("PTT %s: no hay métodos habilitados", action.upper())
+            return False, "Sin métodos habilitados"
+
+        _backends = {"serial": self.serial, "ami": self.ami, "api": self.api}
+        any_ok = False
+        msgs   = []
+        for method in methods:
+            backend = _backends[method]
+            fn      = backend.ptt_on if action == "on" else backend.ptt_off
+            try:
+                ok, msg = fn()
+                any_ok = any_ok or ok
+                log.info("PTT %s [%s] → ok=%s  %s", action.upper(), method, ok, msg)
+                msgs.append(f"{method}:{msg}")
+            except Exception as e:
+                log.error("PTT %s [%s] excepción: %s", action.upper(), method, e)
+                msgs.append(f"{method}:error")
+
+        return any_ok, " | ".join(msgs)
+
     def ptt_on(self) -> tuple[bool, str]:
-        method = self._active_method()
-        ok, msg = False, "Ningún método PTT activo"
-        if method == "serial":
-            ok, msg = self.serial.ptt_on()
-        elif method == "ami":
-            ok, msg = self.ami.ptt_on()
-        elif method == "api":
-            ok, msg = self.api.ptt_on()
+        ok, msg = self._dispatch("on")
         if ok and callable(self.on_ptt_change):
             self.on_ptt_change(True)
         return ok, msg
 
     def ptt_off(self) -> tuple[bool, str]:
-        method = self._active_method()
-        ok, msg = False, "Ningún método PTT activo"
-        if method == "serial":
-            ok, msg = self.serial.ptt_off()
-        elif method == "ami":
-            ok, msg = self.ami.ptt_off()
-        elif method == "api":
-            ok, msg = self.api.ptt_off()
-        if ok and callable(self.on_ptt_change):
+        ok, msg = self._dispatch("off")
+        if callable(self.on_ptt_change):
             self.on_ptt_change(False)
         return ok, msg
+
+    def ptt_off_all(self) -> None:
+        """PTT OFF de seguridad — se envía a TODOS los métodos, sin importar
+        si están habilitados. Usar al cerrar la aplicación."""
+        _backends = {"serial": self.serial, "ami": self.ami, "api": self.api}
+        for method, backend in _backends.items():
+            try:
+                ok, msg = backend.ptt_off()
+                log.info("PTT OFF ALL [%s] → ok=%s  %s", method, ok, msg)
+            except Exception as e:
+                log.debug("PTT OFF ALL [%s] excepción: %s", method, e)
 
     def is_ptt_on(self) -> bool:
         method = self._active_method()

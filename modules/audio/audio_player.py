@@ -101,6 +101,79 @@ except Exception as e:
 """
 
 
+# ── Registro de metadatos de audio ─────────────────────────────────────────────
+def _log_audio_info(filepath: str, alias: str = "") -> None:
+    """Registra en el log los metadatos del archivo de audio que se va a reproducir."""
+    try:
+        p = Path(filepath)
+        stat = p.stat()
+        size_kb = stat.st_size / 1024
+        ext = p.suffix.lower()
+
+        parts = [
+            f"[AUDIO] {p.name}",
+            f"ruta={p.resolve()}",
+            f"formato={ext.lstrip('.').upper() or '?'}",
+            f"tamaño={size_kb:.1f} KB",
+        ]
+
+        # Metadatos extendidos con mutagen
+        try:
+            if ext == ".mp3":
+                from mutagen.mp3 import MP3
+                audio = MP3(filepath)
+                dur   = audio.info.length
+                m, s  = divmod(int(dur), 60)
+                parts.append(f"duración={m}:{s:02d} ({dur:.1f}s)")
+                br = getattr(audio.info, "bitrate", 0)
+                if br:
+                    parts.append(f"bitrate={br // 1000} kbps")
+                sr = getattr(audio.info, "sample_rate", 0)
+                if sr:
+                    parts.append(f"sample_rate={sr} Hz")
+                ch = getattr(audio.info, "channels", 0)
+                if ch:
+                    parts.append(f"canales={ch}")
+                # ID3 tags
+                try:
+                    from mutagen.id3 import ID3
+                    tags = ID3(filepath)
+                    title  = tags.get("TIT2")
+                    artist = tags.get("TPE1")
+                    album  = tags.get("TALB")
+                    if title:
+                        parts.append(f"título={str(title)}")
+                    if artist:
+                        parts.append(f"artista={str(artist)}")
+                    if album:
+                        parts.append(f"álbum={str(album)}")
+                except Exception:
+                    pass
+            elif ext == ".wav":
+                from mutagen.wave import WAVE
+                audio = WAVE(filepath)
+                dur  = audio.info.length
+                m, s = divmod(int(dur), 60)
+                parts.append(f"duración={m}:{s:02d} ({dur:.1f}s)")
+                sr = getattr(audio.info, "sample_rate", 0)
+                if sr:
+                    parts.append(f"sample_rate={sr} Hz")
+                ch = getattr(audio.info, "channels", 0)
+                if ch:
+                    parts.append(f"canales={ch}")
+        except ImportError:
+            pass  # mutagen no instalado
+        except Exception:
+            pass
+
+        if alias:
+            parts.append(f"player={alias}")
+
+        log.info(" | ".join(parts))
+    except Exception as e:
+        log.debug("No se pudieron leer metadatos de %s: %s", filepath, e)
+
+
 class AudioPlayer:
     """Reproductor de audio.
 
@@ -133,6 +206,7 @@ class AudioPlayer:
             err = f"Archivo no encontrado: {filepath}"
             log.error(err)
             return False, err
+        _log_audio_info(filepath, self.ALIAS)
         self.stop()
         self._current    = filepath
         self.on_finished = on_finished
@@ -159,7 +233,7 @@ class AudioPlayer:
             err = f"Archivo no encontrado: {filepath}"
             log.error(err)
             return False, err
-
+        _log_audio_info(filepath, self.ALIAS)
         self.stop()
         self._current    = filepath
         self.on_finished = on_finished

@@ -650,6 +650,49 @@ class ViewAjustes(tk.Frame):
             font=FONTS["small"], bg=C["audio_bg"], fg=C["text2"])
         self._lbl_active_status.pack(side=tk.RIGHT)
 
+        # ── Toggles de habilitación por método ────────────────────────────────
+        toggle_card = tk.Frame(inner, bg=C["surface"], padx=14, pady=10)
+        toggle_card.pack(fill=tk.X, padx=18, pady=(0, 10))
+
+        tk.Label(toggle_card, text="Activación de métodos PTT",
+                 font=FONTS["badge"], bg=C["surface"], fg=C["text3"]).pack(
+            anchor="w", pady=(0, 8))
+
+        toggle_row = tk.Frame(toggle_card, bg=C["surface"])
+        toggle_row.pack(fill=tk.X)
+
+        self._ptt_enabled_vars: dict[str, tk.BooleanVar] = {}
+        self._ptt_enabled_btns: dict[str, HButton] = {}
+
+        _default_enabled = {"serial": True, "ami": False, "api": False}
+        _method_labels   = {
+            "serial": ("🔌", "Serial RS-232"),
+            "ami":    ("☎", "AMI Asterisk"),
+            "api":    ("🌐", "HTTP API"),
+        }
+        for method, (icon, label) in _method_labels.items():
+            key     = f"{method}_enabled"
+            enabled = self.cfg.get(key, _default_enabled[method])
+            var     = tk.BooleanVar(value=enabled)
+            self._ptt_enabled_vars[method] = var
+
+            col = tk.Frame(toggle_row, bg=C["surface"])
+            col.pack(side=tk.LEFT, padx=(0, 12))
+
+            btn_text = f"{icon} {label}  ●" if enabled else f"{icon} {label}  ○"
+            btn = HButton(col, btn_text,
+                          command=lambda m=method: self._toggle_ptt_enabled(m),
+                          variant="success" if enabled else "muted")
+            btn.pack()
+            self._ptt_enabled_btns[method] = btn
+
+            state_lbl = tk.Label(col,
+                text="HABILITADO" if enabled else "DESHABILITADO",
+                font=FONTS["badge"], bg=C["surface"],
+                fg=C["success"] if enabled else C["text3"])
+            state_lbl.pack(pady=(3, 0))
+            setattr(self, f"_ptt_enabled_lbl_{method}", state_lbl)
+
         # Tabs de método
         tab_row = tk.Frame(inner, bg=C["surface2"])
         tab_row.pack(fill=tk.X, padx=18, pady=(0, 2))
@@ -679,6 +722,32 @@ class ViewAjustes(tk.Frame):
 
         active = self.cfg.get("ptt_method", "serial")
         self._switch_ptt_method(active)
+
+    def _toggle_ptt_enabled(self, method: str) -> None:
+        """Activa o desactiva un método PTT y persiste el cambio en settings."""
+        var     = self._ptt_enabled_vars[method]
+        enabled = not var.get()
+        var.set(enabled)
+
+        _icons  = {"serial": "🔌", "ami": "☎", "api": "🌐"}
+        _names  = {"serial": "Serial RS-232", "ami": "AMI Asterisk", "api": "HTTP API"}
+        icon, name = _icons[method], _names[method]
+
+        btn = self._ptt_enabled_btns[method]
+        btn.config(text=f"{icon} {name}  {'●' if enabled else '○'}")
+        btn.set_variant("success" if enabled else "muted")
+
+        lbl = getattr(self, f"_ptt_enabled_lbl_{method}")
+        lbl.config(
+            text="HABILITADO" if enabled else "DESHABILITADO",
+            fg=C["success"] if enabled else C["text3"])
+
+        self.cfg[f"{method}_enabled"] = enabled
+        cfg_mod.save(self.cfg)
+
+        import logging as _logging
+        _log = _logging.getLogger(__name__)
+        _log.info("[PTT] Método %s %s", name, "habilitado" if enabled else "deshabilitado")
 
     def _switch_ptt_method(self, method: str) -> None:
         self.cfg["ptt_method"] = method
@@ -1349,6 +1418,109 @@ class ViewAjustes(tk.Frame):
         HButton(btn_row, t("db.clear"),
                 command=self._clear_db,
                 variant="danger").pack(side=tk.LEFT, padx=(8, 0))
+
+        # ── Explorador de tablas ───────────────────────────────────────────
+        explore = self._card(inner, "Explorador de Tablas", "🔍", accent="#818cf8")
+
+        sel_row = tk.Frame(explore, bg=C["surface"])
+        sel_row.pack(fill=tk.X, pady=(0, 10))
+
+        tk.Label(sel_row, text="Tabla:",
+                 font=FONTS["badge"], bg=C["surface"],
+                 fg=C["text3"]).pack(side=tk.LEFT, padx=(0, 8))
+
+        _TABLES = ["eventos", "secciones", "evento_secciones",
+                   "programacion", "eventos_type", "tipos_seccion"]
+        self._db_table_var = tk.StringVar(value=_TABLES[0])
+        cb = ttk.Combobox(sel_row, textvariable=self._db_table_var,
+                          values=_TABLES, state="readonly", width=24)
+        cb.pack(side=tk.LEFT)
+        cb.bind("<<ComboboxSelected>>", lambda _e: self._refresh_db_table())
+
+        HButton(sel_row, "↺  Actualizar",
+                command=self._refresh_db_table,
+                variant="info").pack(side=tk.LEFT, padx=(8, 0))
+
+        self._db_row_lbl = tk.Label(sel_row, text="",
+            font=FONTS["small"], bg=C["surface"], fg=C["text3"])
+        self._db_row_lbl.pack(side=tk.RIGHT)
+
+        # Treeview + scrollbars
+        tree_wrap = tk.Frame(explore, bg=C["surface"])
+        tree_wrap.pack(fill=tk.X)
+
+        self._db_tree = ttk.Treeview(tree_wrap, show="headings",
+                                      height=10, selectmode="browse")
+        vsb = ttk.Scrollbar(tree_wrap, orient="vertical",
+                             command=self._db_tree.yview)
+        hsb = ttk.Scrollbar(tree_wrap, orient="horizontal",
+                             command=self._db_tree.xview)
+        self._db_tree.configure(yscrollcommand=vsb.set,
+                                xscrollcommand=hsb.set)
+        vsb.pack(side=tk.RIGHT, fill=tk.Y)
+        hsb.pack(side=tk.BOTTOM, fill=tk.X)
+        self._db_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+        self._refresh_db_table()
+
+    def _refresh_db_table(self) -> None:
+        """Carga la tabla seleccionada en el Treeview del explorador."""
+        import database
+        table = self._db_table_var.get()
+        if not table:
+            return
+
+        _LONG_COLS = {"texto_tts", "ruta_archivo"}
+        _MAX_LEN   = 72
+
+        try:
+            conn = database.get_connection()
+
+            col_info  = conn.execute(
+                f"PRAGMA table_info({table})").fetchall()
+            col_names = [c["name"] for c in col_info]
+
+            rows = conn.execute(
+                f"SELECT * FROM {table} LIMIT 500").fetchall()
+            conn.close()
+
+            # Reconfigura columnas
+            self._db_tree["columns"] = col_names
+            for col in col_names:
+                self._db_tree.heading(col, text=col, anchor="w")
+                if col in _LONG_COLS:
+                    w = 200
+                elif col == "id" or col.endswith("_id"):
+                    w = 48
+                elif col in ("duracion", "orden", "activo", "contabilizable",
+                             "regenerar_antes"):
+                    w = 72
+                else:
+                    w = 110
+                self._db_tree.column(col, width=w, minwidth=36, stretch=True)
+
+            # Rellena filas
+            self._db_tree.delete(*self._db_tree.get_children())
+            for row in rows:
+                values = []
+                for col, val in zip(col_names, tuple(row)):
+                    if val is None:
+                        values.append("—")
+                    elif col in _LONG_COLS and isinstance(val, str) \
+                            and len(val) > _MAX_LEN:
+                        values.append(val[:_MAX_LEN - 1] + "…")
+                    else:
+                        values.append(str(val))
+                self._db_tree.insert("", tk.END, values=values)
+
+            n = len(rows)
+            self._db_row_lbl.config(
+                text=f"{n} fila{'s' if n != 1 else ''}",
+                fg=C["success"] if n > 0 else C["text3"])
+
+        except Exception as e:
+            self._db_tree.delete(*self._db_tree.get_children())
+            self._db_row_lbl.config(text=f"Error: {e}", fg=C["danger"])
 
     def _open_folder(self, path: str) -> None:
         import subprocess, os
