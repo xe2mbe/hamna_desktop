@@ -12,13 +12,15 @@ from ui_theme import C, FONTS, HButton
 class ViewProgramacion(tk.Frame):
     def __init__(self, parent, on_transmitir: callable):
         super().__init__(parent, bg=C["bg"])
-        self.on_transmitir = on_transmitir
-        self._on_air_id    = None
-        self._selected_ev  = None
-        self._all_eventos  = []
-        self._schedule     = []
+        self.on_transmitir  = on_transmitir
+        self._on_air_id     = None
+        self._selected_ev   = None
+        self._all_eventos   = []
+        self._schedule      = []
+        self._lbl_ahora     = None   # referencia al label "AHORA — HH:MM"
         self._build()
         self.load_data()
+        self._tick_ahora()
 
     # ── Build ─────────────────────────────────────────────────────────────────
     def _build(self) -> None:
@@ -278,6 +280,16 @@ class ViewProgramacion(tk.Frame):
 
         self.after(1000, self._tick_clock)
 
+    def _tick_ahora(self) -> None:
+        """Actualiza el texto 'AHORA — HH:MM' cada minuto sin reconstruir la timeline."""
+        if self._lbl_ahora:
+            try:
+                self._lbl_ahora.config(
+                    text=f"AHORA — {datetime.now().strftime('%H:%M')}")
+            except Exception:
+                self._lbl_ahora = None   # widget destruido (reload de datos)
+        self.after(60_000, self._tick_ahora)
+
     def _next_event_dt(self) -> tuple:
         """Devuelve (datetime, nombre) del próximo evento programado, o (None, '')."""
         now = datetime.now()
@@ -488,9 +500,10 @@ class ViewProgramacion(tk.Frame):
                 ni.pack(fill=tk.X)
                 tk.Label(ni, text="●", font=("Segoe UI", 8),
                          bg=C["bg"], fg=C["danger"]).pack(side=tk.LEFT)
-                tk.Label(ni, text=f"AHORA — {now_h}",
+                self._lbl_ahora = tk.Label(ni, text=f"AHORA — {now_h}",
                          font=FONTS["badge"], bg=C["bg"],
-                         fg=C["danger"]).pack(side=tk.LEFT, padx=(4, 0))
+                         fg=C["danger"])
+                self._lbl_ahora.pack(side=tk.LEFT, padx=(4, 0))
                 tk.Frame(ni, bg=C["danger"], height=1).pack(
                     side=tk.LEFT, fill=tk.X, expand=True, padx=(8, 0))
 
@@ -549,6 +562,20 @@ class ViewProgramacion(tk.Frame):
                              f"{self._fmt_dur(dur)}",
                  font=FONTS["small"], bg=card_bg,
                  fg=fg_sec).pack(side=tk.LEFT)
+
+        # Hora estimada de fin
+        try:
+            h0, m0 = map(int, (sched["hora"] or "00:00")[:5].split(":"))
+            end_dt  = datetime.now().replace(
+                hour=h0, minute=m0, second=0, microsecond=0
+            ) + timedelta(seconds=int(dur))
+            end_str = end_dt.strftime("%H:%M")
+        except Exception:
+            end_str = "?"
+        fin_fg = C["header_fg"] if is_on_air else ("#34d399" if is_today else C["text3"])
+        tk.Label(card, text=f"Fin aprox.  {end_str}",
+                 font=FONTS["small"], bg=card_bg,
+                 fg=fin_fg).pack(side=tk.RIGHT, padx=(0, 8))
 
         if is_on_air:
             tk.Label(card, text="● AL AIRE",
