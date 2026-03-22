@@ -464,18 +464,19 @@ class SeccionForm(HDialog):
         tipo_key = self._combo_tipo.get()
         tipo_id  = self._tipos_map[tipo_key]
         try:
+            src_stem = Path(self._selected_file).stem
             if self.seccion_id:
                 dur = get_audio_duration(self._selected_file)
                 db.update_seccion(self.seccion_id, nombre,
                                    ruta_archivo=self._selected_file,
                                    duracion=dur)
                 dest = save_audio_file(self._selected_file,
-                                       self.seccion_id, nombre)
+                                       self.seccion_id, src_stem)
                 db.update_seccion_ruta(self.seccion_id, dest)
             else:
                 dur = get_audio_duration(self._selected_file)
                 sec_id = db.insert_seccion(nombre, tipo_id, duracion=dur)
-                dest = save_audio_file(self._selected_file, sec_id, nombre)
+                dest = save_audio_file(self._selected_file, sec_id, src_stem)
                 db.update_seccion_ruta(sec_id, dest)
             self._finish(nombre)
         except Exception as e:
