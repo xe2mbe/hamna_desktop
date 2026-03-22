@@ -2,6 +2,40 @@
 
 Amateur Radio (HAM) Net Automation (NA) System — v1.1.0
 
+Sistema de automatización para redes de radioaficionados. Permite programar y transmitir eventos de audio con control PTT, síntesis de voz (TTS), pausas automáticas y enlace a nodos AllStarLink.
+
+---
+
+## Capturas de pantalla
+
+### Secciones
+*Biblioteca reutilizable de unidades de audio — tipo TTS, Audio o Sonido. La barra inferior muestra el estado AL AIRE en tiempo real.*
+
+![Vista Secciones](docs/screenshots/vista_secciones.png)
+
+---
+
+### Eventos
+*Agrupación de secciones en orden de transmisión. El panel lateral permite agregar secciones desde la biblioteca directamente.*
+
+![Vista Eventos](docs/screenshots/vista_eventos.png)
+
+---
+
+### Programación
+*Agenda semanal con eventos programados. Muestra estado AL AIRE, hora local y UTC, y permite iniciar una transmisión manualmente con "Transmitir ahora".*
+
+![Vista Programación](docs/screenshots/vista_programacion.png)
+
+---
+
+### Ajustes — Tiempos y Pausas
+*Configuración de pausas automáticas, retroceso al reanudar y retardo PTT.*
+
+![Ajustes Tiempos y Pausas](docs/screenshots/ajustes_tiempos_pausas.png)
+
+---
+
 ## Requisitos
 
 - **Windows 10/11**
@@ -49,20 +83,22 @@ hamna_desktop/
 ├── modules/
 │   ├── ptt/
 │   │   ├── ptt_serial.py         <- PTT via RTS/DTR (pyserial)
-│   │   ├── ptt_ami.py            <- PTT via Asterisk AMI
+│   │   ├── ptt_ami.py            <- PTT via Asterisk Manager Interface
 │   │   ├── ptt_api.py            <- PTT via HTTP REST
 │   │   └── ptt_manager.py        <- Fachada unificada PTT
 │   ├── tts/
 │   │   └── tts_manager.py        <- pyttsx3 + Azure TTS REST
-│   └── audio/
-│       └── audio_player.py       <- Reproducción pygame + fallback MCI
+│   ├── audio/
+│   │   └── audio_player.py       <- Reproducción pygame + fallback MCI
+│   └── asl/
+│       └── asl_player.py         <- AllStarLink SFTP + AMI (rpt localplay)
 │
 ├── views/
 │   ├── np_bar.py                 <- Barra "AL AIRE" permanente
 │   ├── view_secciones.py         <- Vista Secciones (biblioteca)
 │   ├── view_eventos.py           <- Vista Eventos + secciones CRUD
 │   ├── view_programacion.py      <- Vista Programación + timeline
-│   └── view_ajustes.py           <- Vista Ajustes (TTS + PTT + Audio)
+│   └── view_ajustes.py           <- Vista Ajustes (TTS + PTT + Audio + ASL)
 │
 ├── forms/
 │   ├── evento_form.py            <- Modal Nuevo/Editar Evento
@@ -70,7 +106,9 @@ hamna_desktop/
 │   ├── prog_form.py              <- Modal Programar Evento
 │   └── audio_player_window.py    <- Ventana de preescucha
 │
+├── docs/screenshots/             <- Capturas de pantalla del README
 ├── media/audios/                 <- Archivos de audio generados/importados
+├── media/sonidos/                <- Audios de anuncios de pausa
 ├── hamna.db                      <- SQLite (se crea automáticamente)
 ├── settings.json                 <- Config local (NO se sube al repo)
 ├── settings.json.example         <- Plantilla de configuración
@@ -91,19 +129,14 @@ Unidades de audio independientes del evento:
 | **Audio** | Archivo .mp3 o .wav externo |
 | **Sonido** | Clip corto .mp3/.wav (máx. 3 seg.) |
 
-Las secciones TTS pueden marcarse como **Regenerar antes** (`🔄`): el audio
-se sintetiza automáticamente justo antes de reproducirse, reflejando siempre
-la hora y fecha actuales.
+Las secciones TTS pueden marcarse como **Regenerar antes** (`🔄`): el audio se sintetiza automáticamente justo antes de reproducirse, reflejando siempre la hora y fecha actuales.
 
 ### Eventos
 
 Agrupan secciones en orden para una transmisión:
 
-- **Número de edición**: campo opcional para numerar ediciones del evento
-  (ej. "Boletín Informativo #42"). El asistente calcula el número por
-  ocurrencia del día de la semana en el año a partir de una fecha elegida.
-- **Contabilizable**: cada sección del evento puede marcarse como contabilizable
-  o no. Esto controla qué cuentan `{num_secciones}` y `{dur_contabilizable}`.
+- **Número de edición**: campo opcional para numerar ediciones del evento (ej. "Boletín Informativo #42"). El asistente calcula el número por ocurrencia del día de la semana en el año a partir de una fecha elegida.
+- **Contabilizable**: cada sección del evento puede marcarse como contabilizable o no. Esto controla qué cuentan `{num_secciones}` y `{dur_contabilizable}`.
 
 ### Variables TTS
 
@@ -124,41 +157,63 @@ Disponibles en cualquier texto de sección tipo TTS:
 
 ---
 
-## Motor TTS
+## Ajustes
 
-### pyttsx3 (offline)
-Usa voces SAPI5 del sistema. Para agregar voces en español:
-`Configuración → Hora e idioma → Voz → Agregar voces`
-
-### Azure Cognitive Services (voces neuronales)
-Integración vía REST API — no requiere SDK adicional.
-
-1. Crear recurso "Speech" en [Azure Portal](https://portal.azure.com)
-2. Copiar la clave y la región al `settings.json`
-3. `Ajustes → Motor TTS → Azure Cognitive Services`
+El panel de Ajustes se divide en siete secciones accesibles desde la barra lateral izquierda:
 
 ---
 
-## Control PTT
+### General
 
-### Serial RS-232 (RTS / DTR)
-Activa el pin RTS o DTR del puerto serial.
+Opciones globales de la aplicación:
+
+- **Confirmar al cerrar**: muestra un diálogo de confirmación si hay una transmisión activa al intentar cerrar la app.
+- **Idioma**: español / English.
+
+---
+
+### Motor TTS
+
+Configura el sintetizador de voz:
+
+**pyttsx3 (offline)**
+- Motor local sin conexión a internet, usa voces SAPI5 instaladas en Windows.
+- Selección de voz, velocidad (palabras por minuto) y volumen.
+- Botón de prueba con texto personalizable.
+
+> Para agregar voces en español: `Configuración → Hora e idioma → Voz → Agregar voces`
+
+**Azure Cognitive Services (voces neuronales)**
+- Integración vía REST API — no requiere SDK adicional.
+- Campos: Clave de suscripción, Región, Voz, Estilo de voz, Tasa de habla y Tono.
+- Selector de formato de salida (MP3 128 kbps, 192 kbps, WAV, etc.).
+- Botón de prueba que genera y reproduce el audio directamente.
+
+> Para activar Azure: crear un recurso "Speech" en [portal.azure.com](https://portal.azure.com), copiar la clave y la región.
+
+---
+
+### Control PTT
+
+Gestiona los tres métodos de Push-to-Talk disponibles simultáneamente. Cada método tiene su propio botón de activación independiente. Todos los métodos habilitados reciben PTT ON/OFF al mismo tiempo. Al cerrar la app se envía PTT OFF a todos sin importar cuáles estén activos.
+
+**Serial RS-232 (RTS / DTR)**
+- Puerto COM, baudrate y pin (RTS o DTR).
+- Requiere driver USB-Serial instalado (CH340, CP2102, etc.).
 
 ```
 Ajustes → Control PTT → Serial RS-232
-Puerto: COM1   Baudrate: 9600   Pin: RTS
+Puerto: COM3   Baudrate: 9600   Pin: RTS
 ```
 
-El driver USB-Serial debe estar instalado (ej. CH340, CP2102).
-
-### AMI (Asterisk Manager Interface)
-Envía `Action: Originate` al servidor Asterisk.
+**AMI — Asterisk Manager Interface**
+- Host, puerto (por defecto 5038), usuario y contraseña.
+- Contexto y extensiones PTT ON/OFF configurables en `extensions.conf`.
 
 ```
 Ajustes → Control PTT → AMI
 Host: 127.0.0.1  Port: 5038
 Usuario/Contraseña: credenciales de manager.conf
-Canal: SIP/radio   Contexto: ptt-control
 ```
 
 **En Asterisk (`extensions.conf`):**
@@ -173,13 +228,89 @@ exten => ptt-off,2,UserEvent(PTT,Status: OFF)
 exten => ptt-off,3,Hangup()
 ```
 
-### API HTTP
-Envía peticiones GET/POST/PUT a un endpoint externo.
+**HTTP API**
+- URL base, ruta ON y ruta OFF.
+- Método HTTP (GET / POST / PUT) y cabeceras opcionales.
+- Útil para integrar con hardware de radio controlado por red.
 
 ```
 Ajustes → Control PTT → API HTTP
 URL Base: http://192.168.1.37   Ruta ON: /ptt_on   Ruta OFF: /ptt_off
 ```
+
+---
+
+### Dispositivos Audio
+
+- Selección del dispositivo de salida de audio principal.
+- Volumen de monitoreo independiente del nivel del sistema.
+
+---
+
+### Tiempos y Pausas
+
+Controla el ciclo de pausa automática durante transmisiones largas:
+
+| Parámetro | Descripción |
+|-----------|-------------|
+| **Tiempo de TX antes de pausa** | Segundos continuos de transmisión antes de pausar automáticamente (10–3600 s) |
+| **Duración de pausa** | Tiempo de silencio entre el anuncio de pausa y el anuncio de regreso (5–600 s) |
+| **Alerta antes de pausa** | Segundos de antelación para reproducir el audio de alerta (0–60 s) |
+| **Retardo PTT ON** | Silencio entre PTT ON y el inicio del audio; compensa la latencia del transmisor (0–10 s) |
+| **Retroceso al reanudar** | Al regresar de una pausa automática, retrocede N segundos antes de la posición guardada para que los oyentes no pierdan contexto (1–20 s, activable independientemente) |
+
+**Archivos de audio** asociados a la secuencia de pausa:
+
+| Audio | Momento de reproducción |
+|-------|------------------------|
+| 🔔 **Alerta de pausa** | N segundos antes del corte, con PTT ON |
+| ⏸ **Anuncio de pausa** | Al pausar; PTT permanece ON durante este audio |
+| ▶ **Anuncio de continuamos** | Al reanudar, antes de volver al evento |
+
+---
+
+### AllStarLink
+
+Transmite el audio del evento a un nodo AllStarLink (ASL) en paralelo con la reproducción local, sin interrumpir el flujo normal de la transmisión.
+
+| Campo | Descripción |
+|-------|-------------|
+| **Nodo ASL** | Número de nodo destino (ej. 299080) |
+| **SFTP Host / Puerto / Usuario / Contraseña** | Acceso SSH al Raspberry Pi con AllStarLink OS |
+| **Ruta remota** | Directorio en el Pi donde se sube el audio (por defecto `/tmp/hamna`) |
+| **AMI Host / Puerto / Usuario / Contraseña** | Acceso al Asterisk Manager Interface del nodo |
+
+El audio se convierte automáticamente a WAV 8 kHz 16-bit mono (formato nativo de Asterisk), se sube por SFTP y se ejecuta `rpt localplay` vía AMI — el nodo controla el PTT del transmisor automáticamente.
+
+Incluye tres botones de prueba independientes: **Test SFTP**, **Test AMI** y **Test localplay**.
+
+> Requiere port forwarding para SSH (22) y AMI (5038) hacia el Raspberry Pi.
+
+---
+
+### Base de Datos
+
+- Ruta del archivo `hamna.db` y carpeta de audios.
+- **Explorador de tablas**: visualiza el contenido de cualquiera de las tablas directamente desde la interfaz (eventos, secciones, evento_secciones, programacion, tipos_seccion, eventos_type).
+- Botón de respaldo para copiar `hamna.db` a una ubicación elegida.
+
+---
+
+## Motor de transmisión
+
+El motor central (`main_window.py`) orquesta el ciclo completo de un evento:
+
+```
+PTT ON → [retardo PTT] → Sección 1 → [gap] → PTT ON → Sección 2 → ... → PTT OFF
+                                ↓ (pausa automática)
+                         Anuncio de pausa → PTT OFF → [espera] → PTT ON → Anuncio de regreso
+                                ↓ (retroceso opcional)
+                         Reanudar sección desde posición guardada − N segundos
+```
+
+- Las secciones TTS con **Regenerar antes** se sintetizan en un hilo de fondo; el timer se suspende durante la generación para evitar avances prematuros.
+- El reproductor local y el nodo ASL corren en paralelo.
+- PTT OFF de seguridad a todos los métodos al cerrar la aplicación.
 
 ---
 
