@@ -662,16 +662,35 @@ class ViewProgramacion(tk.Frame):
                       sched=dict(sched) if sched else None)
 
     # ── Stats ─────────────────────────────────────────────────────────────────
+    def _sched_occurs_on(self, s, target: date) -> bool:
+        """Devuelve True si el evento programado 's' ocurre en la fecha 'target'."""
+        rec = (s["recurrencia"] or "ninguna").lower()
+        try:
+            fecha = date.fromisoformat(s["fecha"])
+        except (ValueError, TypeError):
+            return False
+
+        if rec == "ninguna":
+            return fecha == target
+        elif rec == "diaria":
+            return fecha <= target
+        elif rec == "semanal":
+            return fecha <= target and fecha.weekday() == target.weekday()
+        elif rec == "lun-vie":
+            return fecha <= target and target.weekday() <= 4
+        return False
+
     def _update_stats(self) -> None:
-        today = date.today().isoformat()
-        end_week = (date.today() + timedelta(days=7)).isoformat()
-        total   = len(self._schedule)
-        hoy     = sum(1 for s in self._schedule if s["fecha"] == today)
-        semana  = sum(1 for s in self._schedule
-                      if today <= s["fecha"] <= end_week)
-        prog_ev = {s["evento_id"] for s in self._schedule}
-        pend    = sum(1 for e in self._all_eventos
-                      if e["id"] not in prog_ev)
+        today    = date.today()
+        total    = len(self._schedule)
+        hoy      = sum(1 for s in self._schedule
+                       if self._sched_occurs_on(s, today))
+        semana   = sum(1 for s in self._schedule
+                       if any(self._sched_occurs_on(s, today + timedelta(days=d))
+                              for d in range(7)))
+        prog_ev  = {s["evento_id"] for s in self._schedule}
+        pend     = sum(1 for e in self._all_eventos
+                       if e["id"] not in prog_ev)
         self._stat_vars["total"].set(str(total))
         self._stat_vars["hoy"].set(str(hoy))
         self._stat_vars["semana"].set(str(semana))
