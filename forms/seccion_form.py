@@ -232,6 +232,7 @@ class SeccionForm(HDialog):
             ("Vista previa",  "ghost",   self._preview_vars),
             ("Convertir",     "warning", self._convert_tts),
             ("Reproducir",    "primary", self._play_tts),
+            ("💾 Exportar",   "info",    self._export_tts),
             ("Guardar",       "success", self._save_tts),
         ])
 
@@ -331,6 +332,33 @@ class SeccionForm(HDialog):
                                 parent=self)
             return
         AudioPlayerWindow(self, self._tts_path)
+
+    def _export_tts(self) -> None:
+        """Exporta el audio TTS generado a una ubicación elegida por el usuario."""
+        import shutil
+        if not self._tts_path or not Path(self._tts_path).is_file():
+            messagebox.showinfo("Sin audio", "Primero convierte el texto.",
+                                parent=self)
+            return
+        nombre = self._e_nombre.get().strip()
+        ext    = Path(self._tts_path).suffix or ".mp3"
+        sugerido = f"{nombre}{ext}" if nombre else f"tts_export{ext}"
+        dest = filedialog.asksaveasfilename(
+            parent=self,
+            title="Exportar audio TTS",
+            initialfile=sugerido,
+            defaultextension=ext,
+            filetypes=[("Audio MP3", "*.mp3"), ("Audio WAV", "*.wav"),
+                       ("Todos los archivos", "*.*")],
+        )
+        if not dest:
+            return
+        try:
+            shutil.copy2(self._tts_path, dest)
+            messagebox.showinfo("Exportado",
+                                f"Archivo guardado en:\n{dest}", parent=self)
+        except Exception as e:
+            messagebox.showerror("Error al exportar", str(e), parent=self)
 
     def _save_tts(self) -> None:
         nombre = self._e_nombre.get().strip()
