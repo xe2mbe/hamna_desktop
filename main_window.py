@@ -15,6 +15,7 @@ import settings as cfg_mod
 from ui_theme import C, FONTS, HButton, apply_theme
 from modules.ptt.ptt_manager import PTTManager
 from modules.audio.audio_player import AudioPlayer
+from modules.asl.asl_player import ASLPlayer
 from views.np_bar import NPBar
 from views.view_eventos import ViewEventos
 from views.view_secciones import ViewSecciones
@@ -37,6 +38,7 @@ class MainWindow(tk.Tk):
         self.ptt          = PTTManager(self.cfg)
         self._player       = AudioPlayer(alias="hamna_main")
         self._pause_player = AudioPlayer(alias="hamna_pause", use_subprocess=True)
+        self._asl: ASLPlayer | None = None
 
         # Estado de transmisión
         self._tx_evento_id: int | None = None
@@ -353,6 +355,13 @@ class MainWindow(tk.Tk):
         # Detener transmisión anterior si existe
         self._tx_stop(silent=True)
 
+        # Inicializar/reinicializar ASLPlayer si está habilitado
+        if self.cfg.get("asl_enabled", False):
+            self._asl = ASLPlayer.from_cfg(self.cfg)
+            log.info("ASL habilitado — nodo %s", self.cfg.get("asl_node", ""))
+        else:
+            self._asl = None
+
         self._tx_evento_id       = evento_id
         self._tx_secciones       = secs
         self._tx_cur_sec         = 0
@@ -415,6 +424,7 @@ class MainWindow(tk.Tk):
                     sec["ruta_archivo"],
                     on_finished=lambda: self.after(0, self._on_sec_audio_finished)
                 )
+                self._asl_play(sec["ruta_archivo"], sec["duracion"])
 
     def _regenerar_y_reproducir(self, sec: dict) -> None:
         """Regenera el TTS de la sección con variables actuales y luego la reproduce."""
@@ -462,6 +472,7 @@ class MainWindow(tk.Tk):
                     result,
                     on_finished=lambda: self.after(0, self._on_sec_audio_finished)
                 )
+                self._asl_play(result, dur if dur > 0 else sec["duracion"])
             else:
                 log.error("Regeneración TTS falló: %s — reproduciendo versión guardada", result)
                 # Fallback: reproducir el audio guardado aunque esté desactualizado
@@ -637,6 +648,8 @@ class MainWindow(tk.Tk):
         self._tx_playing     = False
         self._tx_pause_state = "tx"
         self._player.stop()
+        if self._asl:
+            self._asl.stop()
 
         # PTT OFF
         self.ptt.ptt_off()
@@ -813,7 +826,20 @@ class MainWindow(tk.Tk):
         self._set_status("Transmitiendo…")
         self._tx_tick()  # reanudar el loop de tick
 
-    # ── Callbacks ──────────────────��──────────────────────────────────────────
+    # ── ASL helper ────────────────────────────────────────────────────────────
+    def _asl_play(self, filepath: str, duration: float) -> None:
+        """Envía el audio al nodo ASL en paralelo con el reproductor local."""
+        if not self._asl:
+            return
+
+        def _on_asl_status(status: str, msg: str) -> None:
+            log.info("[ASL] status=%s  %s", status, msg)
+
+        self._asl.on_status = _on_asl_status
+        ok, msg = self._asl.play(filepath, duration)
+        log.info("[ASL] play iniciado — ok=%s  %s", ok, msg)
+
+    # ── Callbacks ─────────────────────────────────────────────────────────────
     def _on_cfg_saved(self, new_cfg: dict) -> None:
         self.cfg = new_cfg
         self.ptt.reload_cfg(new_cfg)

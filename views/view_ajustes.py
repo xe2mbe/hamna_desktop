@@ -47,7 +47,8 @@ class ViewAjustes(tk.Frame):
             (t("nav.tts"),          [("tts",     t("nav.item.tts"))]),
             (t("nav.transmission"), [("ptt",     t("nav.item.ptt")),
                                      ("audio",   t("nav.item.audio")),
-                                     ("pauses",  t("nav.item.pauses"))]),
+                                     ("pauses",  t("nav.item.pauses")),
+                                     ("asl",     "📡  AllStarLink")]),
             (t("nav.data"),         [("db",      t("nav.item.db")),
                                      ("logs",    t("nav.item.logs"))]),
         ]
@@ -79,13 +80,14 @@ class ViewAjustes(tk.Frame):
         # Panels
         self._panels: dict[str, tk.Frame] = {}
         self._active_panel = ""
-        for key in ["general", "tts", "ptt", "audio", "pauses", "db", "logs"]:
+        for key in ["general", "tts", "ptt", "audio", "pauses", "asl", "db", "logs"]:
             f = tk.Frame(self._content, bg=C["bg"])
             self._panels[key] = f
         self._build_tts_panel()
         self._build_ptt_panel()
         self._build_audio_panel()
         self._build_pauses_panel()
+        self._build_asl_panel()
         self._build_db_panel()
         self._build_logs_panel()
         self._build_general_panel()
@@ -1384,6 +1386,240 @@ class ViewAjustes(tk.Frame):
         if callable(self.on_cfg_saved):
             self.on_cfg_saved(self.cfg)
         messagebox.showinfo(t("pauses.saved_title"), t("pauses.saved_msg"))
+
+    # ══════════════════════════════════════════════════════════════════════════
+    # PANEL ASL — AllStarLink
+    # ══════════════════════════════════════════════════════════════════════════
+    def _build_asl_panel(self) -> None:
+        p     = self._panels["asl"]
+        inner = self._scrollable(p)
+        self._ph(inner, "AllStarLink (ASL)",
+                 "Transmite audio directamente a tu nodo ASL via SFTP + rpt localplay")
+
+        # ── Activar ────────────────────────────────────────────────────────
+        body_en = self._card(inner, "Activar integración ASL", "📡", accent="#f59e0b")
+        self._asl_enabled_var = tk.BooleanVar(
+            value=self.cfg.get("asl_enabled", False))
+        tk.Checkbutton(body_en,
+            text="Habilitar transmisión vía AllStarLink",
+            variable=self._asl_enabled_var,
+            font=FONTS["body"], bg=C["surface"], fg=C["text"],
+            selectcolor=C["surface2"], activebackground=C["surface"],
+            command=self._toggle_asl_state).pack(anchor="w")
+
+        info = tk.Frame(body_en, bg=C["audio_bg"], padx=10, pady=8)
+        info.pack(fill=tk.X, pady=(10, 0))
+        tk.Label(info,
+            text="Cuando está habilitado, HAMNA sube cada sección al nodo via SFTP\n"
+                 "y la reproduce con 'rpt localplay'. El PTT lo gestiona app_rpt\n"
+                 "automáticamente. El audio local sigue sonando para monitoreo.",
+            font=FONTS["small"], bg=C["audio_bg"], fg=C["text"],
+            justify="left").pack(anchor="w")
+
+        # ── Nodo ───────────────────────────────────────────────────────────
+        self._asl_body = tk.Frame(inner, bg=C["bg"])
+        self._asl_body.pack(fill=tk.X)
+
+        body_n = self._card(self._asl_body, "Número de Nodo", "🔢", accent="#818cf8")
+        self._lbl(body_n, "Nodo ASL")
+        self._asl_node = ttk.Entry(body_n)
+        self._asl_node.insert(0, self.cfg.get("asl_node", "299080"))
+        self._asl_node.pack(fill=tk.X, pady=(0, 0))
+
+        # ── SSH / SFTP ─────────────────────────────────────────────────────
+        body_s = self._card(self._asl_body, "SSH / SFTP", "🔐", accent="#34d399")
+
+        row = tk.Frame(body_s, bg=C["surface"])
+        row.pack(fill=tk.X)
+        row.columnconfigure(0, weight=3)
+        row.columnconfigure(1, weight=1)
+
+        lf = tk.Frame(row, bg=C["surface"])
+        lf.grid(row=0, column=0, sticky="ew", padx=(0, 8))
+        self._lbl(lf, "Host / IP pública (o dominio DDNS)")
+        self._asl_sftp_host = ttk.Entry(lf)
+        self._asl_sftp_host.insert(0, self.cfg.get("asl_sftp_host", ""))
+        self._asl_sftp_host.pack(fill=tk.X)
+
+        rf = tk.Frame(row, bg=C["surface"])
+        rf.grid(row=0, column=1, sticky="ew")
+        self._lbl(rf, "Puerto SSH")
+        self._asl_sftp_port = ttk.Entry(rf, width=8)
+        self._asl_sftp_port.insert(0, str(self.cfg.get("asl_sftp_port", 22)))
+        self._asl_sftp_port.pack(fill=tk.X)
+
+        row2 = tk.Frame(body_s, bg=C["surface"])
+        row2.pack(fill=tk.X, pady=(8, 0))
+        row2.columnconfigure(0, weight=1)
+        row2.columnconfigure(1, weight=1)
+
+        lf2 = tk.Frame(row2, bg=C["surface"])
+        lf2.grid(row=0, column=0, sticky="ew", padx=(0, 8))
+        self._lbl(lf2, "Usuario SSH")
+        self._asl_sftp_user = ttk.Entry(lf2)
+        self._asl_sftp_user.insert(0, self.cfg.get("asl_sftp_user", ""))
+        self._asl_sftp_user.pack(fill=tk.X)
+
+        rf2 = tk.Frame(row2, bg=C["surface"])
+        rf2.grid(row=0, column=1, sticky="ew")
+        self._lbl(rf2, "Contraseña SSH")
+        self._asl_sftp_pass = ttk.Entry(rf2, show="*")
+        self._asl_sftp_pass.insert(0, self.cfg.get("asl_sftp_pass", ""))
+        self._asl_sftp_pass.pack(fill=tk.X)
+
+        self._lbl(body_s, "Carpeta remota para audios")
+        self._asl_remote_path = ttk.Entry(body_s)
+        self._asl_remote_path.insert(0, self.cfg.get("asl_remote_path", "/tmp/hamna"))
+        self._asl_remote_path.pack(fill=tk.X, pady=(0, 8))
+
+        self._asl_sftp_status = tk.Label(body_s, text="●  Sin verificar",
+            font=FONTS["small"], bg=C["surface"], fg=C["text3"])
+        self._asl_sftp_status.pack(anchor="w", pady=(0, 6))
+
+        HButton(body_s, "🔗  Probar SSH/SFTP",
+                command=self._test_asl_sftp,
+                variant="ghost").pack(anchor="w")
+
+        # ── AMI del nodo ASL ───────────────────────────────────────────────
+        body_a = self._card(self._asl_body, "AMI — Asterisk Manager Interface", "⚙", accent="#f59e0b")
+        tk.Label(body_a,
+            text="Configura manager.conf en el nodo con:  write = all,command",
+            font=FONTS["small"], bg=C["surface"], fg=C["text3"]).pack(
+            anchor="w", pady=(0, 8))
+
+        row3 = tk.Frame(body_a, bg=C["surface"])
+        row3.pack(fill=tk.X)
+        row3.columnconfigure(0, weight=3)
+        row3.columnconfigure(1, weight=1)
+
+        lf3 = tk.Frame(row3, bg=C["surface"])
+        lf3.grid(row=0, column=0, sticky="ew", padx=(0, 8))
+        self._lbl(lf3, "Host AMI (misma IP o dominio que SSH)")
+        self._asl_ami_host = ttk.Entry(lf3)
+        self._asl_ami_host.insert(0, self.cfg.get("asl_ami_host", ""))
+        self._asl_ami_host.pack(fill=tk.X)
+
+        rf3 = tk.Frame(row3, bg=C["surface"])
+        rf3.grid(row=0, column=1, sticky="ew")
+        self._lbl(rf3, "Puerto AMI")
+        self._asl_ami_port = ttk.Entry(rf3, width=8)
+        self._asl_ami_port.insert(0, str(self.cfg.get("asl_ami_port", 5038)))
+        self._asl_ami_port.pack(fill=tk.X)
+
+        row4 = tk.Frame(body_a, bg=C["surface"])
+        row4.pack(fill=tk.X, pady=(8, 0))
+        row4.columnconfigure(0, weight=1)
+        row4.columnconfigure(1, weight=1)
+
+        lf4 = tk.Frame(row4, bg=C["surface"])
+        lf4.grid(row=0, column=0, sticky="ew", padx=(0, 8))
+        self._lbl(lf4, "Usuario AMI")
+        self._asl_ami_user = ttk.Entry(lf4)
+        self._asl_ami_user.insert(0, self.cfg.get("asl_ami_user", "hamna"))
+        self._asl_ami_user.pack(fill=tk.X)
+
+        rf4 = tk.Frame(row4, bg=C["surface"])
+        rf4.grid(row=0, column=1, sticky="ew")
+        self._lbl(rf4, "Contraseña AMI")
+        self._asl_ami_pass = ttk.Entry(rf4, show="*")
+        self._asl_ami_pass.insert(0, self.cfg.get("asl_ami_pass", ""))
+        self._asl_ami_pass.pack(fill=tk.X)
+
+        self._asl_ami_status = tk.Label(body_a, text="●  Sin verificar",
+            font=FONTS["small"], bg=C["surface"], fg=C["text3"])
+        self._asl_ami_status.pack(anchor="w", pady=(10, 6))
+
+        asl_btn_row = tk.Frame(body_a, bg=C["surface"])
+        asl_btn_row.pack(fill=tk.X)
+        HButton(asl_btn_row, "🔗  Probar AMI",
+                command=self._test_asl_ami,
+                variant="ghost").pack(side=tk.LEFT)
+        HButton(asl_btn_row, "📢  Test rpt localplay",
+                command=self._test_asl_localplay,
+                variant="info").pack(side=tk.LEFT, padx=(8, 0))
+
+        # ── Guardar ────────────────────────────────────────────────────────
+        HButton(self._asl_body, "💾  Guardar configuración ASL",
+                command=self._save_asl,
+                variant="success").pack(anchor="w", padx=18, pady=(4, 18))
+
+        self._toggle_asl_state()
+
+    def _toggle_asl_state(self) -> None:
+        enabled = self._asl_enabled_var.get()
+        state   = "normal" if enabled else "disabled"
+        for w in self._asl_body.winfo_children():
+            try:
+                w.config(state=state)
+            except Exception:
+                pass
+
+    def _asl_player_from_ui(self):
+        from modules.asl.asl_player import ASLPlayer
+        p = ASLPlayer()
+        p.node        = self._asl_node.get().strip()
+        p.sftp_host   = self._asl_sftp_host.get().strip()
+        p.sftp_port   = int(self._asl_sftp_port.get().strip() or 22)
+        p.sftp_user   = self._asl_sftp_user.get().strip()
+        p.sftp_pass   = self._asl_sftp_pass.get()
+        p.remote_path = self._asl_remote_path.get().strip()
+        p.ami_host    = self._asl_ami_host.get().strip()
+        p.ami_port    = int(self._asl_ami_port.get().strip() or 5038)
+        p.ami_user    = self._asl_ami_user.get().strip()
+        p.ami_pass    = self._asl_ami_pass.get()
+        return p
+
+    def _test_asl_sftp(self) -> None:
+        self._asl_sftp_status.config(text="⏳ Conectando…", fg=C["warning"])
+        player = self._asl_player_from_ui()
+        def run():
+            ok, msg = player.test_sftp()
+            color = C["success"] if ok else C["danger"]
+            icon  = "●  " if ok else "✗  "
+            self.after(0, lambda: self._asl_sftp_status.config(
+                text=f"{icon}{msg}", fg=color))
+        threading.Thread(target=run, daemon=True).start()
+
+    def _test_asl_ami(self) -> None:
+        self._asl_ami_status.config(text="⏳ Conectando…", fg=C["warning"])
+        player = self._asl_player_from_ui()
+        def run():
+            ok, msg = player.test_ami()
+            color = C["success"] if ok else C["danger"]
+            icon  = "●  " if ok else "✗  "
+            self.after(0, lambda: self._asl_ami_status.config(
+                text=f"{icon}{msg}", fg=color))
+        threading.Thread(target=run, daemon=True).start()
+
+    def _test_asl_localplay(self) -> None:
+        self._asl_ami_status.config(
+            text="⏳ Enviando rpt localplay beep…", fg=C["warning"])
+        player = self._asl_player_from_ui()
+        def run():
+            ok, msg = player.test_localplay()
+            color = C["success"] if ok else C["danger"]
+            txt   = "●  localplay enviado — deberías escuchar beep en el nodo" \
+                    if ok else f"✗  {msg}"
+            self.after(0, lambda: self._asl_ami_status.config(
+                text=txt, fg=color))
+        threading.Thread(target=run, daemon=True).start()
+
+    def _save_asl(self) -> None:
+        self.cfg["asl_enabled"]     = bool(self._asl_enabled_var.get())
+        self.cfg["asl_node"]        = self._asl_node.get().strip()
+        self.cfg["asl_sftp_host"]   = self._asl_sftp_host.get().strip()
+        self.cfg["asl_sftp_port"]   = int(self._asl_sftp_port.get().strip() or 22)
+        self.cfg["asl_sftp_user"]   = self._asl_sftp_user.get().strip()
+        self.cfg["asl_sftp_pass"]   = self._asl_sftp_pass.get()
+        self.cfg["asl_remote_path"] = self._asl_remote_path.get().strip()
+        self.cfg["asl_ami_host"]    = self._asl_ami_host.get().strip()
+        self.cfg["asl_ami_port"]    = int(self._asl_ami_port.get().strip() or 5038)
+        self.cfg["asl_ami_user"]    = self._asl_ami_user.get().strip()
+        self.cfg["asl_ami_pass"]    = self._asl_ami_pass.get()
+        cfg_mod.save(self.cfg)
+        if callable(self.on_cfg_saved):
+            self.on_cfg_saved(self.cfg)
+        messagebox.showinfo("ASL", "Configuración ASL guardada.")
 
     # ══════════════════════════════════════════════════════════════════════════
     # PANEL DB

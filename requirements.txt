@@ -10,3 +10,6 @@ requests>=2.31.0
 tkcalendar>=1.6.1
 
 # Azure TTS — integrado via REST, no requiere SDK adicional
+
+# ASL AllStarLink — SFTP upload + AMI command
+paramiko>=3.4.0

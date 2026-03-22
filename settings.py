@@ -63,6 +63,19 @@ DEFAULTS: dict = {
     "start_minimized": False,
     "confirm_close":   True,
 
+    # ASL — AllStarLink
+    "asl_enabled":      False,
+    "asl_node":         "299080",
+    "asl_sftp_host":    "",
+    "asl_sftp_port":    22,
+    "asl_sftp_user":    "",
+    "asl_sftp_pass":    "",
+    "asl_remote_path":  "/tmp/hamna",
+    "asl_ami_host":     "",
+    "asl_ami_port":     5038,
+    "asl_ami_user":     "hamna",
+    "asl_ami_pass":     "",
+
     # Tiempos y Pausas
     "pause_enabled":           False,
     "pause_tx_time":           120,   # segundos de TX antes de pausar
