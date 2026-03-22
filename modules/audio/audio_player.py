@@ -174,6 +174,27 @@ def _log_audio_info(filepath: str, alias: str = "") -> None:
         log.debug("No se pudieron leer metadatos de %s: %s", filepath, e)
 
 
+def measure_dbfs(filepath: str, sample_ms: int = 10_000) -> float | None:
+    """Mide el nivel de loudness promedio de un archivo de audio.
+
+    Analiza los primeros *sample_ms* milisegundos (por defecto 10 seg) para
+    mantener bajo el tiempo de carga en archivos largos.
+    Devuelve dBFS como float (ej. -18.5) o None si falla / pydub no disponible.
+    """
+    try:
+        from pydub import AudioSegment
+        audio = AudioSegment.from_file(filepath)
+        if sample_ms and len(audio) > sample_ms:
+            audio = audio[:sample_ms]
+        dbfs = audio.dBFS
+        if dbfs == float("-inf"):
+            return None          # archivo silencioso
+        return round(dbfs, 1)
+    except Exception as exc:
+        log.debug("measure_dbfs('%s'): %s", filepath, exc)
+        return None
+
+
 class AudioPlayer:
     """Reproductor de audio.
 

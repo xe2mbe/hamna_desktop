@@ -70,7 +70,7 @@ class ViewSecciones(tk.Frame):
         sb = ttk.Scrollbar(area, orient="vertical")
         sb.pack(side=tk.RIGHT, fill=tk.Y)
 
-        cols = ("nombre", "archivo", "tipo", "dur", "regen")
+        cols = ("nombre", "archivo", "tipo", "dur", "regen", "dbfs")
         self._tree = ttk.Treeview(
             area, columns=cols, show="headings",
             yscrollcommand=sb.set, selectmode="browse")
@@ -86,6 +86,7 @@ class ViewSecciones(tk.Frame):
         self._tree.heading("dur",     text="Duración", anchor="e",
                            command=lambda: self._sort_by("dur"))
         self._tree.heading("regen",   text="🔄 Regen.", anchor="center")
+        self._tree.heading("dbfs",    text="Nivel",   anchor="e")
 
         # Anchos de columna
         self._tree.column("nombre",  anchor="w",      minwidth=120, width=200, stretch=True)
@@ -93,6 +94,7 @@ class ViewSecciones(tk.Frame):
         self._tree.column("tipo",    anchor="center", minwidth=70,  width=85,  stretch=False)
         self._tree.column("dur",     anchor="e",      minwidth=70,  width=80,  stretch=False)
         self._tree.column("regen",   anchor="center", minwidth=55,  width=60,  stretch=False)
+        self._tree.column("dbfs",    anchor="e",      minwidth=65,  width=75,  stretch=False)
 
         # Tags de color por tipo
         self._tree.tag_configure("TTS",    foreground=C["tts_fg"])
@@ -178,6 +180,7 @@ class ViewSecciones(tk.Frame):
 
     # ── Render ─────────────────────────────────────────────────────────────────
     def _render(self, secs: list) -> None:
+        from modules.audio.audio_player import measure_dbfs
         self._tree.delete(*self._tree.get_children())
 
         for sec in secs:
@@ -186,11 +189,16 @@ class ViewSecciones(tk.Frame):
             archivo = Path(ruta).name if ruta else "—"
             dur     = self._fmt(sec.get("duracion", 0))
             tag     = tipo if tipo in ("TTS", "Audio", "Sonido") else "none"
-            regen = "🔄" if sec.get("regenerar_antes") else ""
+            regen   = "🔄" if sec.get("regenerar_antes") else ""
+            if ruta and Path(ruta).is_file() and tipo in ("Audio", "Sonido"):
+                v = measure_dbfs(ruta)
+                dbfs = f"{v} dB" if v is not None else "—"
+            else:
+                dbfs = "—"
             self._tree.insert(
                 "", "end",
                 iid=str(sec["id"]),
-                values=(sec["nombre"], archivo, tipo or "—", dur, regen),
+                values=(sec["nombre"], archivo, tipo or "—", dur, regen, dbfs),
                 tags=(tag,))
 
         # Restaurar selección si sigue en la lista

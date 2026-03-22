@@ -52,6 +52,7 @@ class MainWindow(tk.Tk):
         self._tx_thread:    threading.Thread | None = None
         self._tx_lock       = threading.Lock()
         self._tx_stop_flag  = False
+        self._tx_target_dBFS: float   = -18.0  # nivel de referencia del evento actual
 
         # Estado de pausa automática
         # "tx" | "pausing" | "paused" | "resuming"
@@ -363,6 +364,10 @@ class MainWindow(tk.Tk):
         else:
             self._asl = None
 
+        # Calcular nivel de referencia del evento (promedio dBFS de secciones con audio)
+        self._tx_target_dBFS = self._compute_tx_target_dBFS(secs)
+        log.info("Nivel de referencia del evento: %.1f dBFS", self._tx_target_dBFS)
+
         self._tx_evento_id       = evento_id
         self._tx_secciones       = secs
         self._tx_cur_sec         = 0
@@ -421,11 +426,16 @@ class MainWindow(tk.Tk):
         if sec["ruta_archivo"]:
             if Path(sec["ruta_archivo"]).is_file():
                 self._tx_section_start_ms = 0
+                play_path = sec["ruta_archivo"]
+                if (self.cfg.get("section_normalize", False)
+                        and sec.get("tipo") in ("Audio", "Sonido")):
+                    play_path = self._get_normalized_audio(
+                        play_path, self._tx_target_dBFS)
                 self._player.play(
-                    sec["ruta_archivo"],
+                    play_path,
                     on_finished=lambda: self.after(0, self._on_sec_audio_finished)
                 )
-                self._asl_play(sec["ruta_archivo"], sec["duracion"])
+                self._asl_play(play_path, sec["duracion"])
 
     def _regenerar_y_reproducir(self, sec: dict) -> None:
         """Regenera el TTS de la sección con variables actuales y luego la reproduce."""
@@ -578,7 +588,8 @@ class MainWindow(tk.Tk):
                     if alert_file and Path(alert_file).is_file():
                         # Alerta: subprocess con pygame, no interrumpe el evento
                         self._pause_player.play(
-                            self._get_normalized_pause_audio(alert_file))
+                            self._get_normalized_audio(
+                                alert_file, self._pause_audio_target_dBFS()))
 
             if self._tx_seg_elapsed >= pause_tx_time:
                 self._begin_pause_sequence()
@@ -738,7 +749,8 @@ class MainWindow(tk.Tk):
         ann_file = self.cfg.get("pause_announcement_file", "")
         log.info("Anuncio de pausa: '%s' — existe=%s", ann_file, Path(ann_file).is_file() if ann_file else False)
         if ann_file and Path(ann_file).is_file():
-            ann_file_norm = self._get_normalized_pause_audio(ann_file)
+            ann_file_norm = self._get_normalized_audio(
+                ann_file, self._pause_audio_target_dBFS())
             ok, msg = self._player.play(ann_file_norm)
             log.info("play(anuncio_pausa) → ok=%s msg=%s", ok, msg)
             dur = get_audio_duration(ann_file_norm)
@@ -805,7 +817,8 @@ class MainWindow(tk.Tk):
         log.info("Anuncio de continuamos: '%s' — existe=%s",
                  res_file, Path(res_file).is_file() if res_file else False)
         if res_file and Path(res_file).is_file():
-            res_file_norm = self._get_normalized_pause_audio(res_file)
+            res_file_norm = self._get_normalized_audio(
+                res_file, self._pause_audio_target_dBFS())
             ok, msg = self._player.play(res_file_norm)
             log.info("play(anuncio_continuamos) → ok=%s msg=%s", ok, msg)
             dur = get_audio_duration(res_file_norm)
@@ -868,56 +881,70 @@ class MainWindow(tk.Tk):
         ok, msg = self._asl.play(filepath, duration)
         log.info("[ASL] play iniciado — ok=%s  %s", ok, msg)
 
-    # ── Normalización de volumen para audios de pausa ─────────────────────────
-    def _get_normalized_pause_audio(self, filepath: str) -> str:
-        """Devuelve una copia del archivo normalizada al volumen configurado.
+    # ── Normalización de nivel de audio ───────────────────────────────────────
+    def _compute_tx_target_dBFS(self, secs: list) -> float:
+        """Calcula el nivel de referencia del evento como promedio dBFS de sus
+        secciones Audio/Sonido con archivo válido. Devuelve -18.0 si no hay datos."""
+        from modules.audio.audio_player import measure_dbfs
+        levels = []
+        for s in secs:
+            if s.get("tipo") in ("Audio", "Sonido"):
+                ruta = s.get("ruta_archivo") or ""
+                if ruta and Path(ruta).is_file():
+                    v = measure_dbfs(ruta)
+                    if v is not None:
+                        levels.append(v)
+        if not levels:
+            return -18.0
+        return round(sum(levels) / len(levels), 1)
 
-        El resultado se almacena en cache en media/sonidos/ con prefijo '_norm_'.
-        Si el archivo original no ha cambiado (mismo mtime) se reutiliza la cache.
+    def _get_normalized_audio(self, filepath: str, target_dBFS: float) -> str:
+        """Normaliza *filepath* al *target_dBFS* indicado y devuelve la ruta del
+        archivo resultante (cacheado en media/sonidos/ con prefijo '_norm_').
+
         Si pydub no está disponible o falla, devuelve el filepath original.
+        El cache se invalida automáticamente cuando el archivo fuente cambia.
         """
         try:
             from pydub import AudioSegment
         except ImportError:
-            log.warning("pydub no disponible — usando audio de pausa sin normalizar")
-            return filepath
-
-        pause_vol = int(self.cfg.get("pause_volume", 80))
-        if pause_vol <= 0:
-            # Silencio total: devolver original y dejar que el reproductor lo maneje
+            log.warning("pydub no disponible — usando audio sin normalizar")
             return filepath
 
         src = Path(filepath)
         if not src.is_file():
             return filepath
 
-        # Directorio de cache: media/sonidos/
         cache_dir = Path(__file__).parent / "media" / "sonidos"
         cache_dir.mkdir(parents=True, exist_ok=True)
-        cache_path = cache_dir / f"_norm_{src.stem}_{pause_vol}{src.suffix}"
+        # El nombre del cache incluye el target para evitar colisiones
+        t_tag = str(target_dBFS).replace("-", "n").replace(".", "d")
+        cache_path = cache_dir / f"_norm_{src.stem}_{t_tag}{src.suffix}"
 
         src_mtime = src.stat().st_mtime
-        # Reutilizar cache si existe y no es más antigua que el original
         if cache_path.is_file() and cache_path.stat().st_mtime >= src_mtime:
             return str(cache_path)
 
         try:
             audio = AudioSegment.from_file(str(src))
-            # Mapeo: 100 % → 0 dBFS de reducción, 0 % → -inf (silencio)
-            # Escala lineal: cada 1 % = −0.5 dB aproximado sobre una base de −10 dBFS
-            target_dBFS = -10.0 + (pause_vol - 100) * 0.4
             change_dB = target_dBFS - audio.dBFS
             normalized = audio.apply_gain(change_dB)
             fmt = src.suffix.lstrip(".").lower() or "mp3"
             normalized.export(str(cache_path), format=fmt)
-            # Propagar mtime del original para detección de cambios
             os.utime(str(cache_path), (src_mtime, src_mtime))
-            log.info("Audio de pausa normalizado: %s → %s (vol=%d%%)",
-                     src.name, cache_path.name, pause_vol)
+            log.info("Audio normalizado: %s → %.1f dBFS (cache: %s)",
+                     src.name, target_dBFS, cache_path.name)
             return str(cache_path)
         except Exception as exc:
-            log.warning("Error normalizando audio de pausa '%s': %s", filepath, exc)
+            log.warning("Error normalizando '%s': %s", filepath, exc)
             return filepath
+
+    def _pause_audio_target_dBFS(self) -> float:
+        """dBFS objetivo para los audios de pausa: nivel del evento + offset del slider."""
+        pause_vol = int(self.cfg.get("pause_volume", 80))
+        # 100 % → 0 dB de offset, cada punto = −0.4 dB
+        offset_dB = (pause_vol - 100) * 0.4
+        return self._tx_target_dBFS + offset_dB
 
     # ── Callbacks ─────────────────────────────────────────────────────────────
     def _on_cfg_saved(self, new_cfg: dict) -> None:

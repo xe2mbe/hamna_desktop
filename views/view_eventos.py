@@ -225,7 +225,7 @@ class ViewEventos(tk.Frame):
                 sec_sb.pack(side=tk.RIGHT, fill=tk.Y, before=self._sec_tree)
             sec_sb.set(first, last)
 
-        sec_cols = ("orden", "nombre", "tipo", "dur", "regen", "cont")
+        sec_cols = ("orden", "nombre", "tipo", "dur", "regen", "cont", "dbfs")
         self._sec_tree = ttk.Treeview(
             sec_area, columns=sec_cols, show="headings",
             yscrollcommand=_sec_yscroll, selectmode="browse")
@@ -237,6 +237,7 @@ class ViewEventos(tk.Frame):
         self._sec_tree.heading("dur",    text="Duración",  anchor="e")
         self._sec_tree.heading("regen",  text="🔄 Regen.", anchor="center")
         self._sec_tree.heading("cont",   text="Cont.",    anchor="center")
+        self._sec_tree.heading("dbfs",   text="Nivel",    anchor="e")
 
         self._sec_tree.column("orden",  anchor="center", minwidth=25, width=30,  stretch=False)
         self._sec_tree.column("nombre", anchor="w",      minwidth=100, width=160, stretch=True)
@@ -244,6 +245,7 @@ class ViewEventos(tk.Frame):
         self._sec_tree.column("dur",    anchor="e",      minwidth=70,  width=80,  stretch=False)
         self._sec_tree.column("regen",  anchor="center", minwidth=55,  width=60,  stretch=False)
         self._sec_tree.column("cont",   anchor="center", minwidth=45,  width=50,  stretch=False)
+        self._sec_tree.column("dbfs",   anchor="e",      minwidth=65,  width=75,  stretch=False)
 
         self._sec_tree.tag_configure("TTS",    foreground=C["tts_fg"])
         self._sec_tree.tag_configure("Audio",  foreground=C["audio_fg"])
@@ -398,6 +400,8 @@ class ViewEventos(tk.Frame):
             text=f"{len(secs)} sección(es) · {self._fmt_dur(total)} total")
 
     def _render_sec_rows(self, secs: list, mode: str) -> None:
+        from pathlib import Path as _Path
+        from modules.audio.audio_player import measure_dbfs
         self._sec_tree.delete(*self._sec_tree.get_children())
         self._sec_id_map = {}
         self._sec_items  = []
@@ -413,8 +417,14 @@ class ViewEventos(tk.Frame):
             self._sec_items.append(iid)
             regen = "🔄" if sec.get("regenerar_antes") else ""
             cont  = "✓"  if sec.get("contabilizable", 1) else "—"
+            ruta  = sec.get("ruta_archivo") or ""
+            if ruta and _Path(ruta).is_file() and tipo in ("Audio", "Sonido"):
+                v = measure_dbfs(ruta)
+                dbfs = f"{v} dB" if v is not None else "—"
+            else:
+                dbfs = "—"
             self._sec_tree.insert("", "end", iid=iid,
-                values=(orden, sec["nombre"], tipo or "—", dur, regen, cont),
+                values=(orden, sec["nombre"], tipo or "—", dur, regen, cont, dbfs),
                 tags=(tag,))
 
     def _sec_id_from_sel(self) -> int | None:

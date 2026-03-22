@@ -1189,9 +1189,27 @@ class ViewAjustes(tk.Frame):
                 variant="success").pack(side=tk.LEFT, padx=(8, 0),
                                         pady=(8, 0))
 
+        # ── Normalización de nivel de secciones ────────────────────────────
+        body_n = self._card(inner, "Normalización de nivel", "📊", accent="#818cf8")
+        self._section_normalize_var = tk.BooleanVar(
+            value=self.cfg.get("section_normalize", False))
+        tk.Checkbutton(body_n,
+            text=t("audio.normalize_secs"),
+            variable=self._section_normalize_var,
+            font=FONTS["body"], bg=C["surface"], fg=C["text"],
+            selectcolor=C["surface2"],
+            activebackground=C["surface"]).pack(anchor="w")
+        tk.Label(body_n, text=t("audio.normalize_secs_hint"),
+                 font=FONTS["small"], bg=C["surface"], fg=C["text3"],
+                 wraplength=420, justify="left").pack(anchor="w", pady=(4, 0))
+        HButton(body_n, t("audio.save"),
+                command=self._save_audio,
+                variant="success").pack(anchor="w", pady=(10, 0))
+
     def _save_audio(self) -> None:
         self.cfg["audio_device"] = self._audio_dev.get()
         self.cfg["audio_volume"] = int(self._audio_vol.get())
+        self.cfg["section_normalize"] = bool(self._section_normalize_var.get())
         cfg_mod.save(self.cfg)
         messagebox.showinfo(t("audio.saved_title"), t("audio.saved_msg"))
 
