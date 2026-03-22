@@ -502,9 +502,19 @@ class ViewProgramacion(tk.Frame):
 
     def _make_tl_card(self, ev, sched) -> None:
         is_on_air = self._on_air_id == ev["id"]
+        is_today  = self._sched_occurs_on(sched, date.today())
         secs  = db.get_secciones_by_evento(ev["id"])
         dur   = sum(s["duracion"] for s in secs)
-        color = C["danger"] if is_on_air else C["accent"]
+
+        if is_on_air:
+            color   = C["danger"]
+            card_bg = C["header"]
+        elif is_today:
+            color   = "#34d399"   # verde
+            card_bg = "#0b2318"   # fondo verde oscuro
+        else:
+            color   = C["accent"]
+            card_bg = C["surface"]
 
         row = tk.Frame(self._tl_inner, bg=C["bg"],
                        padx=14, pady=3)
@@ -513,10 +523,10 @@ class ViewProgramacion(tk.Frame):
         # Hora
         tk.Label(row, text=sched["hora"],
                  font=FONTS["mono_sm"], bg=C["bg"],
-                 fg=C["text3"], width=7).pack(side=tk.LEFT)
+                 fg="#34d399" if is_today and not is_on_air else C["text3"],
+                 width=7).pack(side=tk.LEFT)
 
         # Card
-        card_bg = C["header"] if is_on_air else C["surface"]
         card = tk.Frame(row, bg=card_bg, padx=12, pady=8,
                         cursor="hand2")
         card.pack(side=tk.LEFT, fill=tk.X, expand=True)
