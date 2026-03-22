@@ -427,8 +427,7 @@ class MainWindow(tk.Tk):
             if Path(sec["ruta_archivo"]).is_file():
                 self._tx_section_start_ms = 0
                 play_path = sec["ruta_archivo"]
-                if (self.cfg.get("section_normalize", False)
-                        and sec.get("tipo") in ("Audio", "Sonido")):
+                if self.cfg.get("section_normalize", False):
                     play_path = self._get_normalized_audio(
                         play_path, self._tx_target_dBFS)
                 self._player.play(
@@ -489,11 +488,15 @@ class MainWindow(tk.Tk):
                             self._tx_secciones[self._tx_cur_sec]["duracion"] = dur
                     self._tx_sec_elapsed      = 0.0
                     self._tx_section_start_ms = 0
+                    play_result = result
+                    if self.cfg.get("section_normalize", False):
+                        play_result = self._get_normalized_audio(
+                            result, self._tx_target_dBFS)
                     self._player.play(
-                        result,
+                        play_result,
                         on_finished=lambda: self.after(0, self._on_sec_audio_finished)
                     )
-                    self._asl_play(result, dur if dur > 0 else 0)
+                    self._asl_play(play_result, dur if dur > 0 else 0)
                 else:
                     log.error("Regeneración TTS falló: %s — reproduciendo versión guardada", result)
                     if sec.get("ruta_archivo") and Path(sec["ruta_archivo"]).is_file():

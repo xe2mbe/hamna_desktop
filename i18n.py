@@ -150,7 +150,7 @@ _STRINGS: dict[str, dict[str, str]] = {
         "pauses.pause_vol":      "VOLUMEN DE AUDIOS DE PAUSA (relativo a secciones)",
         "pauses.pause_vol_hint": "100 = mismo nivel que las secciones del evento. Valores menores reducen el volumen de los audios de pausa proporcionalmente.",
         "audio.normalize_secs":      "Normalizar nivel de secciones Audio/Sonido",
-        "audio.normalize_secs_hint": "Iguala el volumen de todos los archivos de audio del evento al nivel promedio de las secciones. Útil para compensar audios externos (p.ej. editoriales) que llegan con nivel diferente. Solo aplica a secciones tipo Audio y Sonido.",
+        "audio.normalize_secs_hint": "Iguala el volumen de todas las secciones del evento (Audio, Sonido y TTS) al nivel promedio calculado al inicio de cada transmisión. Útil para compensar audios externos con nivel diferente o voces TTS más altas que el resto.",
         # DB
         "db.title":           "Base de Datos",
         "db.subtitle":        "Rutas de archivos y mantenimiento de hamna.db",
@@ -319,7 +319,7 @@ _STRINGS: dict[str, dict[str, str]] = {
         "pauses.pause_vol":      "PAUSE AUDIO VOLUME (relative to sections)",
         "pauses.pause_vol_hint": "100 = same level as the event sections. Lower values reduce the pause audio volume proportionally.",
         "audio.normalize_secs":      "Normalize Audio/Sound section levels",
-        "audio.normalize_secs_hint": "Equalizes the volume of all event audio files to the average level of the sections. Useful to compensate external audio (e.g. editorials) that arrive at a different level. Applies only to Audio and Sound type sections.",
+        "audio.normalize_secs_hint": "Equalizes the volume of all event sections (Audio, Sound and TTS) to the average level calculated at the start of each transmission. Useful to compensate external audio at different levels or TTS voices that are louder than the rest.",
         # DB
         "db.title":           "Database",
         "db.subtitle":        "File paths and maintenance for hamna.db",
