@@ -454,36 +454,50 @@ class MainWindow(tk.Tk):
         # el archivo original (puede estar bloqueado por OneDrive o por el player)
         out = Path("media/audios") / f"regen_{sec['id']}.mp3"
 
+        # Deshabilitar avance por timer durante la generación TTS:
+        # duracion=0 impide que _tx_tick_body avance la sección mientras el
+        # hilo TTS trabaja. on_done restaura la duración real al terminar.
+        _prev_dur = sec["duracion"]
+        sec["duracion"] = 0
+        if self._tx_cur_sec < len(self._tx_secciones):
+            self._tx_secciones[self._tx_cur_sec]["duracion"] = 0
+
         def on_done(ok: bool, result: str) -> None:
-            if ok:
-                from modules.tts.tts_manager import get_audio_duration
-                dur = get_audio_duration(result)
-                # Actualizar duración real del regen y reiniciar el timer
-                # para que el avance por timer cuente desde que el audio empieza
-                if dur > 0:
-                    sec["duracion"] = dur
-                    # Actualizar también en _tx_secciones para que _tx_tick use
-                    # la duración correcta
-                    if self._tx_cur_sec < len(self._tx_secciones):
-                        self._tx_secciones[self._tx_cur_sec]["duracion"] = dur
-                self._tx_sec_elapsed      = 0.0
-                self._tx_section_start_ms = 0
-                self._player.play(
-                    result,
-                    on_finished=lambda: self.after(0, self._on_sec_audio_finished)
-                )
-                self._asl_play(result, dur if dur > 0 else sec["duracion"])
-            else:
-                log.error("Regeneración TTS falló: %s — reproduciendo versión guardada", result)
-                # Fallback: reproducir el audio guardado aunque esté desactualizado
-                if sec.get("ruta_archivo") and Path(sec["ruta_archivo"]).is_file():
-                    self._tx_sec_elapsed = 0.0
+            # on_done viene de un hilo de fondo — usar after(0) para ejecutar
+            # todo en el hilo principal de Tkinter y evitar condiciones de carrera
+            # con _tx_tick y con el subsistema de audio de Windows.
+            def _apply() -> None:
+                if not self._tx_playing or self._tx_stop_flag:
+                    return
+                if ok:
+                    from modules.tts.tts_manager import get_audio_duration
+                    dur = get_audio_duration(result)
+                    if dur > 0:
+                        sec["duracion"] = dur
+                        if self._tx_cur_sec < len(self._tx_secciones):
+                            self._tx_secciones[self._tx_cur_sec]["duracion"] = dur
+                    self._tx_sec_elapsed      = 0.0
+                    self._tx_section_start_ms = 0
                     self._player.play(
-                        sec["ruta_archivo"],
+                        result,
                         on_finished=lambda: self.after(0, self._on_sec_audio_finished)
                     )
+                    self._asl_play(result, dur if dur > 0 else 0)
                 else:
-                    self.after(0, self._on_sec_audio_finished)
+                    log.error("Regeneración TTS falló: %s — reproduciendo versión guardada", result)
+                    if sec.get("ruta_archivo") and Path(sec["ruta_archivo"]).is_file():
+                        sec["duracion"] = _prev_dur
+                        if self._tx_cur_sec < len(self._tx_secciones):
+                            self._tx_secciones[self._tx_cur_sec]["duracion"] = _prev_dur
+                        self._tx_sec_elapsed = 0.0
+                        self._player.play(
+                            sec["ruta_archivo"],
+                            on_finished=lambda: self.after(0, self._on_sec_audio_finished)
+                        )
+                    else:
+                        self.after(0, self._on_sec_audio_finished)
+
+            self.after(0, _apply)
 
         convert_text(sec["texto_tts"], self.cfg, out, on_done=on_done, ctx=ctx)
 
