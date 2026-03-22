@@ -29,13 +29,6 @@ Sistema de automatización para redes de radioaficionados. Permite programar y t
 
 ---
 
-### Ajustes — Tiempos y Pausas
-*Configuración de pausas automáticas, retroceso al reanudar y retardo PTT.*
-
-![Ajustes Tiempos y Pausas](docs/screenshots/ajustes_tiempos_pausas.png)
-
----
-
 ## Requisitos
 
 - **Windows 10/11**
