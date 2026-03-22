@@ -84,6 +84,8 @@ DEFAULTS: dict = {
     "pause_alert_file":        "",    # ruta audio alerta
     "pause_announcement_file": "",    # ruta audio "en pausa"
     "pause_resume_file":       "",    # ruta audio "continuamos"
+    "retroceso_enabled":       False, # retroceso al reanudar tras pausa automática
+    "retroceso_secs":          5,     # segundos de retroceso (1-20)
 }
 
 

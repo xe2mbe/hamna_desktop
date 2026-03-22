@@ -143,7 +143,10 @@ _STRINGS: dict[str, dict[str, str]] = {
         "pauses.saved_msg":   "Configuración de tiempos y pausas guardada.",
         "pauses.warn_title":  "Advertencia",
         "pauses.copy_warn":   "No se pudo copiar a media/sonidos/:\n{e}\n\nSe usará la ruta original.",
-        "pauses.audio_dlg":   "Seleccionar archivo de audio",
+        "pauses.audio_dlg":      "Seleccionar archivo de audio",
+        "pauses.rewind_enable":  "Activar retroceso al reanudar",
+        "pauses.rewind":         "RETROCESO AL REANUDAR (seg)",
+        "pauses.rewind_hint":    "Al regresar de una pausa automática, retrocede N segundos antes de la posición donde se pausó. Útil para que los oyentes no pierdan contexto (rango: 1–20 seg).",
         # DB
         "db.title":           "Base de Datos",
         "db.subtitle":        "Rutas de archivos y mantenimiento de hamna.db",
@@ -305,7 +308,10 @@ _STRINGS: dict[str, dict[str, str]] = {
         "pauses.saved_msg":   "Timing and pause settings saved.",
         "pauses.warn_title":  "Warning",
         "pauses.copy_warn":   "Could not copy to media/sonidos/:\n{e}\n\nOriginal path will be used.",
-        "pauses.audio_dlg":   "Select audio file",
+        "pauses.audio_dlg":      "Select audio file",
+        "pauses.rewind_enable":  "Enable rewind on resume",
+        "pauses.rewind":         "REWIND ON RESUME (sec)",
+        "pauses.rewind_hint":    "When returning from an automatic pause, rewind N seconds before the saved position. Helps listeners catch context they may have missed (range: 1–20 sec).",
         # DB
         "db.title":           "Database",
         "db.subtitle":        "File paths and maintenance for hamna.db",

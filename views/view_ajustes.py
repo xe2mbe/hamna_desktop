@@ -1307,6 +1307,44 @@ class ViewAjustes(tk.Frame):
                  font=FONTS["small"], bg=C["surface"], fg=C["text3"],
                  wraplength=340, justify="left").pack(side="left", padx=(16, 0))
 
+        # ── Retroceso al reanudar ──────────────────────────────────────────
+        tk.Frame(body_t, bg=C["border"], height=1).pack(fill=tk.X, pady=(8, 0))
+        row4 = tk.Frame(body_t, bg=C["surface"])
+        row4.pack(fill=tk.X, pady=(8, 0))
+
+        self._retroceso_enabled_var = tk.BooleanVar(
+            value=self.cfg.get("retroceso_enabled", False))
+
+        f_rw = tk.Frame(row4, bg=C["surface"])
+        f_rw.pack(side="left")
+        tk.Label(f_rw, text=t("pauses.rewind"),
+                 font=FONTS["badge"], bg=C["surface"], fg=C["text3"]
+                 ).pack(anchor="w", pady=(0, 4))
+        sp_rw = tk.Spinbox(f_rw, from_=1, to=20, width=8,
+                           bg=C["input_bg"], fg=C["text"],
+                           buttonbackground=C["surface2"],
+                           relief="flat", font=FONTS["body"],
+                           highlightthickness=1,
+                           highlightcolor=C["border"],
+                           highlightbackground=C["border"])
+        sp_rw.delete(0, "end")
+        sp_rw.insert(0, str(self.cfg.get("retroceso_secs", 5)))
+        sp_rw.pack(anchor="w")
+        self._pause_sp_retroceso_secs = sp_rw
+
+        f_rw_chk = tk.Frame(row4, bg=C["surface"])
+        f_rw_chk.pack(side="left", padx=(16, 0))
+        tk.Checkbutton(f_rw_chk,
+            text=t("pauses.rewind_enable"),
+            variable=self._retroceso_enabled_var,
+            font=FONTS["body"], bg=C["surface"], fg=C["text"],
+            selectcolor=C["surface2"],
+            activebackground=C["surface"]).pack(anchor="w", pady=(18, 0))
+        tk.Label(row4,
+                 text=t("pauses.rewind_hint"),
+                 font=FONTS["small"], bg=C["surface"], fg=C["text3"],
+                 wraplength=280, justify="left").pack(side="left", padx=(16, 0))
+
         # ── Archivos de audio ──────────────────────────────────────────────
         body_a = self._card(self._pauses_body, t("pauses.audio_files"), "🔊", accent="#34d399")
 
@@ -1370,12 +1408,16 @@ class ViewAjustes(tk.Frame):
             path_var.set(path)
 
     def _save_pauses(self) -> None:
-        self.cfg["pause_enabled"] = bool(self._pause_enabled_var.get())
+        self.cfg["pause_enabled"]    = bool(self._pause_enabled_var.get())
+        self.cfg["retroceso_enabled"] = bool(self._retroceso_enabled_var.get())
         for key in ("pause_tx_time", "pause_duration", "pause_alert_before",
-                    "ptt_on_delay"):
+                    "ptt_on_delay", "retroceso_secs"):
             try:
                 sp = getattr(self, f"_pause_sp_{key}")
-                self.cfg[key] = int(sp.get())
+                val = int(sp.get())
+                if key == "retroceso_secs":
+                    val = max(1, min(20, val))
+                self.cfg[key] = val
             except Exception:
                 pass
         for key in ("pause_alert_file", "pause_announcement_file",

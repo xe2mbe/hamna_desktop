@@ -826,12 +826,23 @@ class MainWindow(tk.Tk):
         if cur_sec and cur_sec.get("ruta_archivo") and \
                 Path(cur_sec["ruta_archivo"]).is_file():
             cb = lambda: self.after(0, self._on_sec_audio_finished)
-            if self._tx_resume_ms > 0:
-                self._tx_section_start_ms = self._tx_resume_ms
+
+            # Calcular posición de reanudación aplicando retroceso si está activo
+            resume_ms = self._tx_resume_ms
+            if self.cfg.get("retroceso_enabled", False) and resume_ms > 0:
+                rewind_ms = int(float(self.cfg.get("retroceso_secs", 5)) * 1000)
+                resume_ms = max(0, resume_ms - rewind_ms)
+                log.info("Retroceso: %d ms — reanudando desde %d ms (antes: %d ms)",
+                         rewind_ms, resume_ms, self._tx_resume_ms)
+
+            if resume_ms > 0:
+                self._tx_section_start_ms = resume_ms
+                self._tx_sec_elapsed      = resume_ms / 1000.0
                 self._player.play_from_ms(cur_sec["ruta_archivo"],
-                                          self._tx_resume_ms, on_finished=cb)
+                                          resume_ms, on_finished=cb)
             else:
                 self._tx_section_start_ms = 0
+                self._tx_sec_elapsed      = 0.0
                 self._player.play(cur_sec["ruta_archivo"], on_finished=cb)
         self._tx_alert_played = False
         self._tx_playing      = True
