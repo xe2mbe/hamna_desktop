@@ -221,6 +221,37 @@ class SeccionForm(HDialog):
                      values=ev_names, state="readonly").pack(
             fill=tk.X, pady=(4, 0))
 
+        # ── Velocidad de conversión ───────────────────────────────────────
+        engine = self.cfg.get("tts_engine", "pyttsx3")
+        if engine == "azure":
+            rate_min, rate_max = 50, 200
+            rate_default = int(self.cfg.get("azure_rate", 100))
+            rate_label   = "VELOCIDAD (%)"
+        else:
+            rate_min, rate_max = 50, 300
+            rate_default = int(self.cfg.get("tts_rate", 175))
+            rate_label   = "VELOCIDAD (palabras/min)"
+
+        speed_row = tk.Frame(d, bg=C["bg"])
+        speed_row.pack(fill=tk.X, pady=(10, 0))
+        tk.Label(speed_row, text=rate_label, font=FONTS["badge"],
+                 bg=C["bg"], fg=C["text2"]).pack(side=tk.LEFT)
+        self._rate_val_lbl = tk.Label(speed_row,
+                                      text=str(rate_default),
+                                      font=FONTS["badge"],
+                                      bg=C["bg"], fg=C["tts_fg"], width=4)
+        self._rate_val_lbl.pack(side=tk.RIGHT)
+
+        self._rate_var = tk.IntVar(value=rate_default)
+        tk.Scale(d, variable=self._rate_var,
+                 from_=rate_min, to=rate_max,
+                 orient="horizontal", resolution=1,
+                 bg=C["bg"], fg=C["text"], troughcolor=C["surface2"],
+                 highlightthickness=0, showvalue=False,
+                 command=lambda v: self._rate_val_lbl.config(
+                     text=str(int(float(v))))
+                 ).pack(fill=tk.X)
+
         self._tts_status = tk.Label(d, text="", font=FONTS["small"],
                                      bg=C["bg"], fg=C["text2"])
         self._tts_status.pack(anchor="w", pady=(6, 0))
@@ -321,8 +352,16 @@ class SeccionForm(HDialog):
         _out = Path(__file__).parent.parent / f"tts_form_{self._tts_slot}.mp3"
         self._tts_slot = 1 - self._tts_slot
 
+        # Aplicar velocidad del slider sin modificar la configuración global
+        rate_val = int(self._rate_var.get())
+        cfg_conv = dict(self.cfg)
+        if cfg_conv.get("tts_engine", "pyttsx3") == "azure":
+            cfg_conv["azure_rate"] = rate_val
+        else:
+            cfg_conv["tts_rate"] = rate_val
+
         convert_text(self._tts_text.get("1.0", tk.END).strip(),
-                     self.cfg, _out,
+                     cfg_conv, _out,
                      on_done=lambda ok, r: self.after(0, done, ok, r),
                      ctx=self._build_ctx())
 
