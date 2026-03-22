@@ -7,6 +7,7 @@ from tkinter import ttk, messagebox
 import threading
 import time
 import logging
+import os
 from pathlib import Path
 
 log = logging.getLogger(__name__)
@@ -576,7 +577,8 @@ class MainWindow(tk.Tk):
                     alert_file = self.cfg.get("pause_alert_file", "")
                     if alert_file and Path(alert_file).is_file():
                         # Alerta: subprocess con pygame, no interrumpe el evento
-                        self._pause_player.play(alert_file)
+                        self._pause_player.play(
+                            self._get_normalized_pause_audio(alert_file))
 
             if self._tx_seg_elapsed >= pause_tx_time:
                 self._begin_pause_sequence()
@@ -736,9 +738,10 @@ class MainWindow(tk.Tk):
         ann_file = self.cfg.get("pause_announcement_file", "")
         log.info("Anuncio de pausa: '%s' — existe=%s", ann_file, Path(ann_file).is_file() if ann_file else False)
         if ann_file and Path(ann_file).is_file():
-            ok, msg = self._player.play(ann_file)
+            ann_file_norm = self._get_normalized_pause_audio(ann_file)
+            ok, msg = self._player.play(ann_file_norm)
             log.info("play(anuncio_pausa) → ok=%s msg=%s", ok, msg)
-            dur = get_audio_duration(ann_file)
+            dur = get_audio_duration(ann_file_norm)
             delay_ms = int(dur * 1000) + 400 if dur > 0 else 1000
             log.info("Duración anuncio pausa: %.2fs — espera %dms", dur, delay_ms)
         else:
@@ -802,9 +805,10 @@ class MainWindow(tk.Tk):
         log.info("Anuncio de continuamos: '%s' — existe=%s",
                  res_file, Path(res_file).is_file() if res_file else False)
         if res_file and Path(res_file).is_file():
-            ok, msg = self._player.play(res_file)
+            res_file_norm = self._get_normalized_pause_audio(res_file)
+            ok, msg = self._player.play(res_file_norm)
             log.info("play(anuncio_continuamos) → ok=%s msg=%s", ok, msg)
-            dur = get_audio_duration(res_file)
+            dur = get_audio_duration(res_file_norm)
             delay_ms = int(dur * 1000) + 400 if dur > 0 else 1000
             log.info("Duración anuncio continuamos: %.2fs — espera %dms", dur, delay_ms)
         else:
@@ -863,6 +867,57 @@ class MainWindow(tk.Tk):
         self._asl.on_status = _on_asl_status
         ok, msg = self._asl.play(filepath, duration)
         log.info("[ASL] play iniciado — ok=%s  %s", ok, msg)
+
+    # ── Normalización de volumen para audios de pausa ─────────────────────────
+    def _get_normalized_pause_audio(self, filepath: str) -> str:
+        """Devuelve una copia del archivo normalizada al volumen configurado.
+
+        El resultado se almacena en cache en media/sonidos/ con prefijo '_norm_'.
+        Si el archivo original no ha cambiado (mismo mtime) se reutiliza la cache.
+        Si pydub no está disponible o falla, devuelve el filepath original.
+        """
+        try:
+            from pydub import AudioSegment
+        except ImportError:
+            log.warning("pydub no disponible — usando audio de pausa sin normalizar")
+            return filepath
+
+        pause_vol = int(self.cfg.get("pause_volume", 80))
+        if pause_vol <= 0:
+            # Silencio total: devolver original y dejar que el reproductor lo maneje
+            return filepath
+
+        src = Path(filepath)
+        if not src.is_file():
+            return filepath
+
+        # Directorio de cache: media/sonidos/
+        cache_dir = Path(__file__).parent / "media" / "sonidos"
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        cache_path = cache_dir / f"_norm_{src.stem}_{pause_vol}{src.suffix}"
+
+        src_mtime = src.stat().st_mtime
+        # Reutilizar cache si existe y no es más antigua que el original
+        if cache_path.is_file() and cache_path.stat().st_mtime >= src_mtime:
+            return str(cache_path)
+
+        try:
+            audio = AudioSegment.from_file(str(src))
+            # Mapeo: 100 % → 0 dBFS de reducción, 0 % → -inf (silencio)
+            # Escala lineal: cada 1 % = −0.5 dB aproximado sobre una base de −10 dBFS
+            target_dBFS = -10.0 + (pause_vol - 100) * 0.4
+            change_dB = target_dBFS - audio.dBFS
+            normalized = audio.apply_gain(change_dB)
+            fmt = src.suffix.lstrip(".").lower() or "mp3"
+            normalized.export(str(cache_path), format=fmt)
+            # Propagar mtime del original para detección de cambios
+            os.utime(str(cache_path), (src_mtime, src_mtime))
+            log.info("Audio de pausa normalizado: %s → %s (vol=%d%%)",
+                     src.name, cache_path.name, pause_vol)
+            return str(cache_path)
+        except Exception as exc:
+            log.warning("Error normalizando audio de pausa '%s': %s", filepath, exc)
+            return filepath
 
     # ── Callbacks ─────────────────────────────────────────────────────────────
     def _on_cfg_saved(self, new_cfg: dict) -> None:

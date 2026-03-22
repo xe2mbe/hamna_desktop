@@ -1345,6 +1345,15 @@ class ViewAjustes(tk.Frame):
                  font=FONTS["small"], bg=C["surface"], fg=C["text3"],
                  wraplength=280, justify="left").pack(side="left", padx=(16, 0))
 
+        # ── Volumen de audios de pausa ─────────────────────────────────────
+        row5 = tk.Frame(body_t, bg=C["surface"])
+        row5.pack(fill=tk.X, pady=(12, 0))
+        self._lbl(row5, t("pauses.pause_vol"))
+        self._pause_vol_sl = self._slider(row5, "pause_volume", 0, 100)
+        tk.Label(row5, text=t("pauses.pause_vol_hint"),
+                 font=FONTS["small"], bg=C["surface"], fg=C["text3"],
+                 wraplength=420, justify="left").pack(anchor="w", pady=(2, 0))
+
         # ── Archivos de audio ──────────────────────────────────────────────
         body_a = self._card(self._pauses_body, t("pauses.audio_files"), "🔊", accent="#34d399")
 
@@ -1420,6 +1429,7 @@ class ViewAjustes(tk.Frame):
                 self.cfg[key] = val
             except Exception:
                 pass
+        self.cfg["pause_volume"] = int(self._pause_vol_sl.get())
         for key in ("pause_alert_file", "pause_announcement_file",
                     "pause_resume_file"):
             pv = getattr(self, f"_pause_path_{key}")

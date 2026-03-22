@@ -147,6 +147,8 @@ _STRINGS: dict[str, dict[str, str]] = {
         "pauses.rewind_enable":  "Activar retroceso al reanudar",
         "pauses.rewind":         "RETROCESO AL REANUDAR (seg)",
         "pauses.rewind_hint":    "Al regresar de una pausa automática, retrocede N segundos antes de la posición donde se pausó. Útil para que los oyentes no pierdan contexto (rango: 1–20 seg).",
+        "pauses.pause_vol":      "VOLUMEN DE AUDIOS DE PAUSA (%)",
+        "pauses.pause_vol_hint": "Ajusta el volumen de los tres audios de pausa (alerta, anuncio y continuamos) en relación al volumen de las secciones del evento.",
         # DB
         "db.title":           "Base de Datos",
         "db.subtitle":        "Rutas de archivos y mantenimiento de hamna.db",
@@ -312,6 +314,8 @@ _STRINGS: dict[str, dict[str, str]] = {
         "pauses.rewind_enable":  "Enable rewind on resume",
         "pauses.rewind":         "REWIND ON RESUME (sec)",
         "pauses.rewind_hint":    "When returning from an automatic pause, rewind N seconds before the saved position. Helps listeners catch context they may have missed (range: 1–20 sec).",
+        "pauses.pause_vol":      "PAUSE AUDIO VOLUME (%)",
+        "pauses.pause_vol_hint": "Adjusts the volume of the three pause audio clips (alert, announcement, resume) relative to the event section volume.",
         # DB
         "db.title":           "Database",
         "db.subtitle":        "File paths and maintenance for hamna.db",
