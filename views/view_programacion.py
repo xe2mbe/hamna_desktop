@@ -102,6 +102,23 @@ class ViewProgramacion(tk.Frame):
                                        bg="#142035", fg="#34d399")
         self._lbl_utc_date.grid(row=2, column=2, sticky="w")
 
+        # Separador vertical
+        tk.Frame(clocks, bg=C["border"], width=1).grid(
+            row=0, column=3, rowspan=3, sticky="ns", padx=16)
+
+        # Countdown próximo evento
+        tk.Label(clocks, text="PRÓXIMO", font=FONTS["badge"],
+                 bg="#142035", fg="#fbbf24").grid(
+            row=0, column=4, sticky="w")
+        self._lbl_countdown = tk.Label(clocks, text="––:––:––",
+                                        font=("Consolas", 18, "bold"),
+                                        bg="#142035", fg="#fde68a")
+        self._lbl_countdown.grid(row=1, column=4, sticky="w")
+        self._lbl_countdown_name = tk.Label(clocks, text="",
+                                             font=FONTS["small"],
+                                             bg="#142035", fg="#fbbf24")
+        self._lbl_countdown_name.grid(row=2, column=4, sticky="w")
+
         self._tick_clock()
         tk.Frame(self, bg=C["border"], height=1).pack(fill=tk.X)
 
@@ -239,7 +256,83 @@ class ViewProgramacion(tk.Frame):
         self._lbl_local_date.config(text=now_local.strftime("%Y-%m-%d"))
         self._lbl_utc.config(       text=now_utc.strftime(  "%H:%M:%S"))
         self._lbl_utc_date.config(  text=now_utc.strftime(  "%Y-%m-%d"))
+
+        # Countdown al próximo evento
+        next_dt, next_name = self._next_event_dt()
+        if next_dt:
+            secs_left = int((next_dt - now_local).total_seconds())
+            if secs_left > 0:
+                d, rem  = divmod(secs_left, 86400)
+                h, rem  = divmod(rem, 3600)
+                m, s    = divmod(rem, 60)
+                txt = f"{d}d {h:02d}:{m:02d}:{s:02d}" if d else f"{h:02d}:{m:02d}:{s:02d}"
+                self._lbl_countdown.config(text=txt, fg="#fde68a")
+            else:
+                self._lbl_countdown.config(text="AL AIRE", fg="#f87171")
+            # Truncar nombre para que no desborde
+            self._lbl_countdown_name.config(
+                text=next_name[:22] + ("…" if len(next_name) > 22 else ""))
+        else:
+            self._lbl_countdown.config(text="––:––:––", fg="#fde68a")
+            self._lbl_countdown_name.config(text="Sin eventos")
+
         self.after(1000, self._tick_clock)
+
+    def _next_event_dt(self) -> tuple:
+        """Devuelve (datetime, nombre) del próximo evento programado, o (None, '')."""
+        now = datetime.now()
+        best_dt: datetime | None = None
+        best_name = ""
+
+        for s in self._schedule:
+            hora  = (s["hora"] or "")[:5]
+            fecha = s["fecha"] or ""
+            rec   = (s["recurrencia"] or "ninguna").lower()
+            ev    = next((e for e in self._all_eventos
+                          if e["id"] == s["evento_id"]), None)
+            name  = ev["nombre"] if ev else "?"
+
+            try:
+                base_dt = datetime.strptime(f"{fecha} {hora}", "%Y-%m-%d %H:%M")
+            except ValueError:
+                continue
+
+            candidate: datetime | None = None
+            t = base_dt.replace(year=now.year, month=now.month, day=now.day)
+
+            if rec == "ninguna":
+                if base_dt > now:
+                    candidate = base_dt
+
+            elif rec == "diaria":
+                candidate = t if t > now else t + timedelta(days=1)
+
+            elif rec == "semanal":
+                dow = base_dt.weekday()
+                days_ahead = (dow - now.weekday()) % 7
+                candidate = (now + timedelta(days=days_ahead)).replace(
+                    hour=base_dt.hour, minute=base_dt.minute,
+                    second=0, microsecond=0)
+                if candidate <= now:
+                    candidate += timedelta(days=7)
+
+            elif rec == "lun-vie":
+                # Busca el próximo día lun-vie con esa hora
+                for offset in range(8):
+                    day = now + timedelta(days=offset)
+                    if day.weekday() <= 4:  # lun=0 … vie=4
+                        cand = day.replace(hour=base_dt.hour,
+                                           minute=base_dt.minute,
+                                           second=0, microsecond=0)
+                        if cand > now:
+                            candidate = cand
+                            break
+
+            if candidate and (best_dt is None or candidate < best_dt):
+                best_dt   = candidate
+                best_name = name
+
+        return best_dt, best_name
 
     # ── Carga de datos ────────────────────────────────────────────────────────
     def load_data(self) -> None:
