@@ -446,7 +446,7 @@ class SeccionForm(HDialog):
             self._badge(d, "🔔  Sonido — Máximo 3 segundos de duración",
                         C["sonido_bg"], C["sonido_fg"])
         else:
-            self._badge(d, "🎧  Audio — Selecciona un archivo .mp3 o .wav",
+            self._badge(d, "🎧  Audio — Selecciona un archivo .mp3, .wav o .m4a",
                         C["audio_bg"], C["audio_fg"])
 
         tk.Label(d, text="ARCHIVO DE AUDIO", font=FONTS["badge"],
@@ -481,7 +481,7 @@ class SeccionForm(HDialog):
         path = filedialog.askopenfilename(
             parent=self,
             title="Seleccionar Archivo de Audio",
-            filetypes=[("Audio", "*.mp3 *.wav *.MP3 *.WAV"),
+            filetypes=[("Audio", "*.mp3 *.wav *.m4a *.MP3 *.WAV *.M4A"),
                        ("Todos", "*.*")]
         )
         if path:

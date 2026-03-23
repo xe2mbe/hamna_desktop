@@ -309,14 +309,31 @@ def convert_text(text: str, cfg: dict,
 
 
 # ── Utilidades de audio ───────────────────────────────────────────────────────
+_CONVERT_FORMATS = {".m4a"}   # formatos que se convierten a MP3 al importar
+
 def save_audio_file(source: str, seccion_id: int,
                     seccion_nombre: str) -> str:
-    """Copia y renombra a media/audios/{id}_{nombre}.ext"""
+    """Copia y renombra a media/audios/{id}_{nombre}.ext.
+    Archivos M4A (y otros formatos no nativos) se convierten a MP3 con pydub."""
     AUDIO_DIR.mkdir(parents=True, exist_ok=True)
     import shutil
-    ext  = Path(source).suffix.lower() or ".mp3"
-    safe = _sanitize(seccion_nombre)
-    dest = AUDIO_DIR / f"{seccion_id}_{safe}{ext}"
+    src_ext = Path(source).suffix.lower() or ".mp3"
+    safe    = _sanitize(seccion_nombre)
+
+    if src_ext in _CONVERT_FORMATS:
+        dest = AUDIO_DIR / f"{seccion_id}_{safe}.mp3"
+        try:
+            from pydub import AudioSegment
+            AudioSegment.from_file(source).export(str(dest), format="mp3")
+            log.info("M4A convertido a MP3: %s → %s", Path(source).name, dest.name)
+            return str(dest)
+        except Exception as exc:
+            log.warning("No se pudo convertir %s a MP3: %s — copiando original", source, exc)
+            dest = AUDIO_DIR / f"{seccion_id}_{safe}{src_ext}"
+            shutil.copy2(source, dest)
+            return str(dest)
+
+    dest = AUDIO_DIR / f"{seccion_id}_{safe}{src_ext}"
     shutil.copy2(source, dest)
     return str(dest)
 
@@ -358,6 +375,14 @@ def get_audio_duration(filepath: str) -> float:
             winmm.mciSendStringW(f'close {alias}', buf, 512, 0)
             if length_ms.isdigit():
                 return int(length_ms) / 1000.0
+    except Exception:
+        pass
+
+    # Intento 3: pydub (soporta M4A y otros formatos via ffmpeg)
+    try:
+        from pydub import AudioSegment
+        audio = AudioSegment.from_file(filepath)
+        return len(audio) / 1000.0
     except Exception:
         pass
 
