@@ -2,6 +2,7 @@
 HAMNA Desktop — Vista de Secciones (Biblioteca)
 Gestión completa de la biblioteca de secciones independiente de eventos.
 """
+import threading
 import tkinter as tk
 from tkinter import ttk, messagebox
 from pathlib import Path
@@ -182,6 +183,10 @@ class ViewSecciones(tk.Frame):
     def _render(self, secs: list) -> None:
         from modules.audio.audio_player import measure_dbfs
         self._tree.delete(*self._tree.get_children())
+        self._dbfs_render_id = getattr(self, "_dbfs_render_id", 0) + 1
+        render_id = self._dbfs_render_id
+
+        pending = []
 
         for sec in secs:
             tipo    = sec.get("tipo") or ""
@@ -191,8 +196,8 @@ class ViewSecciones(tk.Frame):
             tag     = tipo if tipo in ("TTS", "Audio", "Sonido") else "none"
             regen   = "🔄" if sec.get("regenerar_antes") else ""
             if ruta and Path(ruta).is_file() and tipo in ("Audio", "Sonido"):
-                v = measure_dbfs(ruta)
-                dbfs = f"{v} dB" if v is not None else "—"
+                dbfs = "…"
+                pending.append((str(sec["id"]), ruta))
             else:
                 dbfs = "—"
             self._tree.insert(
@@ -200,6 +205,27 @@ class ViewSecciones(tk.Frame):
                 iid=str(sec["id"]),
                 values=(sec["nombre"], archivo, tipo or "—", dur, regen, dbfs),
                 tags=(tag,))
+
+        if not pending:
+            return
+
+        def _measure_all():
+            for iid, ruta in pending:
+                if self._dbfs_render_id != render_id:
+                    return
+                v    = measure_dbfs(ruta)
+                text = f"{v} dB" if v is not None else "—"
+                self.after(0, _update_cell, iid, text)
+
+        def _update_cell(iid, text):
+            if self._dbfs_render_id != render_id:
+                return
+            try:
+                self._tree.set(iid, "dbfs", text)
+            except Exception:
+                pass
+
+        threading.Thread(target=_measure_all, daemon=True).start()
 
         # Restaurar selección si sigue en la lista
         if self._selected_id and str(self._selected_id) in self._tree.get_children():

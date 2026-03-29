@@ -4,6 +4,7 @@ Panel izquierdo: gestión de eventos.
 Panel derecho: biblioteca de secciones (sin selección) o
                secciones del evento seleccionado.
 """
+import threading
 import tkinter as tk
 from tkinter import ttk, messagebox
 from pathlib import Path
@@ -402,11 +403,15 @@ class ViewEventos(tk.Frame):
             text=f"{len(secs)} sección(es) · {self._fmt_dur(total)} total")
 
     def _render_sec_rows(self, secs: list, mode: str) -> None:
-        from pathlib import Path as _Path
         from modules.audio.audio_player import measure_dbfs
         self._sec_tree.delete(*self._sec_tree.get_children())
         self._sec_id_map = {}
         self._sec_items  = []
+        self._dbfs_render_id = getattr(self, "_dbfs_render_id", 0) + 1
+        render_id = self._dbfs_render_id
+
+        # Filas a medir en background: (iid, ruta)
+        pending = []
 
         for i, sec in enumerate(secs):
             sec   = dict(sec)
@@ -420,16 +425,37 @@ class ViewEventos(tk.Frame):
             regen = "🔄" if sec.get("regenerar_antes") else ""
             cont  = "✓"  if sec.get("contabilizable", 1) else "—"
             ruta  = sec.get("ruta_archivo") or ""
-            if ruta and _Path(ruta).is_file() and tipo in ("Audio", "Sonido"):
-                v = measure_dbfs(ruta)
-                dbfs    = f"{v} dB" if v is not None else "—"
-                archivo = _Path(ruta).name
+            if ruta and Path(ruta).is_file() and tipo in ("Audio", "Sonido"):
+                archivo = Path(ruta).name
+                dbfs    = "…"
+                pending.append((iid, ruta))
             else:
-                dbfs    = "—"
                 archivo = ""
+                dbfs    = "—"
             self._sec_tree.insert("", "end", iid=iid,
                 values=(orden, sec["nombre"], archivo, tipo or "—", dur, regen, cont, dbfs),
                 tags=(tag,))
+
+        if not pending:
+            return
+
+        def _measure_all():
+            for iid, ruta in pending:
+                if self._dbfs_render_id != render_id:
+                    return  # render obsoleto, abandonar
+                v    = measure_dbfs(ruta)
+                text = f"{v} dB" if v is not None else "—"
+                self.after(0, _update_cell, iid, text)
+
+        def _update_cell(iid, text):
+            if self._dbfs_render_id != render_id:
+                return
+            try:
+                self._sec_tree.set(iid, "dbfs", text)
+            except Exception:
+                pass
+
+        threading.Thread(target=_measure_all, daemon=True).start()
 
     def _sec_id_from_sel(self) -> int | None:
         """Devuelve el sec_id del ítem seleccionado, o None."""
