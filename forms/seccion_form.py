@@ -83,17 +83,38 @@ class SeccionForm(HDialog):
         self._e_nombre = ttk.Entry(fields)
         self._e_nombre.grid(row=1, column=0, sticky="ew", pady=(4, 0))
 
+        # Título
+        tk.Label(fields, text="TÍTULO",
+                 font=FONTS["badge"], bg=C["bg"], fg=C["text2"]).grid(
+            row=2, column=0, sticky="w", pady=(12, 0))
+        self._e_titulo = ttk.Entry(fields)
+        self._e_titulo.grid(row=3, column=0, sticky="ew", pady=(4, 0))
+
+        # Descripción
+        tk.Label(fields, text="DESCRIPCIÓN",
+                 font=FONTS["badge"], bg=C["bg"], fg=C["text2"]).grid(
+            row=4, column=0, sticky="w", pady=(12, 0))
+        desc_frame = tk.Frame(fields, bg=C["border"], padx=1, pady=1)
+        desc_frame.grid(row=5, column=0, sticky="ew", pady=(4, 0))
+        desc_frame.columnconfigure(0, weight=1)
+        self._e_descripcion = tk.Text(desc_frame, height=3,
+                                       bg=C["input_bg"], fg=C["text"],
+                                       insertbackground=C["text"],
+                                       relief="flat", wrap="word",
+                                       font=FONTS["body"], padx=8, pady=6)
+        self._e_descripcion.grid(row=0, column=0, sticky="ew")
+
         # Tipo
         tipos = db.get_tipos_seccion()
         self._tipos_map = {r["nombre"]: r["id"] for r in tipos}
         tk.Label(fields, text="TIPO DE SECCIÓN *",
                  font=FONTS["badge"], bg=C["bg"], fg=C["text2"]).grid(
-            row=2, column=0, sticky="w", pady=(12, 0))
+            row=6, column=0, sticky="w", pady=(12, 0))
         self._combo_tipo = ttk.Combobox(
             fields, values=[r["nombre"] for r in tipos],
             state="readonly" if not self.seccion_id else "disabled"
         )
-        self._combo_tipo.grid(row=3, column=0, sticky="ew", pady=(4, 0))
+        self._combo_tipo.grid(row=7, column=0, sticky="ew", pady=(4, 0))
         self._combo_tipo.bind("<<ComboboxSelected>>", self._on_tipo_change)
 
         # Panel dinámico
@@ -104,6 +125,10 @@ class SeccionForm(HDialog):
     # ── Pre-llenado (edición) ─────────────────────────────────────────────────
     def _prefill(self) -> None:
         self._e_nombre.insert(0, self._sec_data["nombre"])
+        if self._sec_data.get("titulo"):
+            self._e_titulo.insert(0, self._sec_data["titulo"])
+        if self._sec_data.get("descripcion"):
+            self._e_descripcion.insert("1.0", self._sec_data["descripcion"])
         self._combo_tipo.set(self._sec_data["tipo"] or "")
         if self._sec_data["ruta_archivo"]:
             self._selected_file = self._sec_data["ruta_archivo"]
@@ -166,6 +191,10 @@ class SeccionForm(HDialog):
                  bg=C["bg"], fg=C["text2"]).pack(anchor="w", pady=(10, 4))
 
         _var_groups = [
+            ("📋 Sección", [
+                ("{titulo}",      "Título de esta sección"),
+                ("{descripcion}", "Descripción de esta sección"),
+            ]),
             ("📅 Fecha/Hora", [
                 ("{fecha}",           "Fecha (DD/MM/YYYY)"),
                 ("{hora}",            "Hora (HH:MM)"),
@@ -269,9 +298,16 @@ class SeccionForm(HDialog):
 
     def _build_ctx(self) -> dict:
         """Construye el contexto de variables de evento a partir del selector."""
+        nombre_val = self._e_nombre.get().strip()
+        titulo_val = self._e_titulo.get().strip() or nombre_val
+        ctx = {
+            "titulo":      titulo_val,
+            "descripcion": self._e_descripcion.get("1.0", tk.END).strip(),
+        }
+
         ev_label = self._ev_ctx_var.get()
         if ev_label == "(ninguno)" or ev_label not in self._ev_ctx_map:
-            return {}
+            return ctx
         ev = self._ev_ctx_map[ev_label]
         secs = db.get_secciones_by_evento(ev["id"])
         dur_total = sum(s["duracion"] or 0 for s in secs)
@@ -282,12 +318,13 @@ class SeccionForm(HDialog):
             m, s = divmod(int(seg), 60)
             return f"{m} minutos con {s} segundos" if s else f"{m} minutos"
 
-        return {
+        ctx.update({
             "evento":            ev["nombre"],
             "num_secciones":     str(num_cont),
             "duracion_total":    _fmt(dur_total),
             "dur_contabilizable": _fmt(dur_cont),
-        }
+        })
+        return ctx
 
     def _preview_vars(self) -> None:
         """Muestra el texto con variables resueltas tal como lo recibirá el TTS."""
@@ -409,22 +446,26 @@ class SeccionForm(HDialog):
             messagebox.showwarning("Sin audio", "Convierte el texto primero.",
                                    parent=self)
             return
-        texto   = self._tts_text.get("1.0", tk.END).strip()
-        tipo_id = self._tipos_map["TTS"]
-        dur     = get_audio_duration(self._tts_path)
-        regen   = self._regen_var.get()
+        texto     = self._tts_text.get("1.0", tk.END).strip()
+        tipo_id   = self._tipos_map["TTS"]
+        dur       = get_audio_duration(self._tts_path)
+        regen     = self._regen_var.get()
+        titulo    = self._e_titulo.get().strip() or None
+        descrip   = self._e_descripcion.get("1.0", tk.END).strip() or None
         try:
             if self.seccion_id:
                 db.update_seccion(self.seccion_id, nombre,
                                    texto_tts=texto, duracion=dur,
-                                   regenerar_antes=regen)
+                                   regenerar_antes=regen,
+                                   titulo=titulo, descripcion=descrip)
                 dest = save_audio_file(self._tts_path,
                                        self.seccion_id, nombre)
                 db.update_seccion_ruta(self.seccion_id, dest)
             else:
                 sec_id = db.insert_seccion(nombre, tipo_id,
                                             texto_tts=texto, duracion=dur,
-                                            regenerar_antes=regen)
+                                            regenerar_antes=regen,
+                                            titulo=titulo, descripcion=descrip)
                 dest = save_audio_file(self._tts_path, sec_id, nombre)
                 db.update_seccion_ruta(sec_id, dest)
             self._finish(nombre)
@@ -530,19 +571,23 @@ class SeccionForm(HDialog):
 
         tipo_key = self._combo_tipo.get()
         tipo_id  = self._tipos_map[tipo_key]
+        titulo   = self._e_titulo.get().strip() or None
+        descrip  = self._e_descripcion.get("1.0", tk.END).strip() or None
         try:
             src_stem = Path(self._selected_file).stem
             if self.seccion_id:
                 dur = get_audio_duration(self._selected_file)
                 db.update_seccion(self.seccion_id, nombre,
                                    ruta_archivo=self._selected_file,
-                                   duracion=dur)
+                                   duracion=dur,
+                                   titulo=titulo, descripcion=descrip)
                 dest = save_audio_file(self._selected_file,
                                        self.seccion_id, src_stem)
                 db.update_seccion_ruta(self.seccion_id, dest)
             else:
                 dur = get_audio_duration(self._selected_file)
-                sec_id = db.insert_seccion(nombre, tipo_id, duracion=dur)
+                sec_id = db.insert_seccion(nombre, tipo_id, duracion=dur,
+                                            titulo=titulo, descripcion=descrip)
                 dest = save_audio_file(self._selected_file, sec_id, src_stem)
                 db.update_seccion_ruta(sec_id, dest)
             self._finish(nombre)

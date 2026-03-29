@@ -37,6 +37,8 @@ class MainWindow(tk.Tk):
         db.init_db()
         self.cfg        = cfg_mod.load()
         self.ptt          = PTTManager(self.cfg)
+        # PTT OFF de seguridad al iniciar — libera cualquier estado previo
+        threading.Thread(target=self.ptt.ptt_off_all, daemon=True).start()
         self._player       = AudioPlayer(alias="hamna_main")
         self._pause_player = AudioPlayer(alias="hamna_pause", use_subprocess=True)
         self._asl: ASLPlayer | None = None
@@ -442,7 +444,10 @@ class MainWindow(tk.Tk):
 
         ev = next((e for e in db.get_all_eventos()
                    if e["id"] == self._tx_evento_id), None)
-        ctx = {}
+        ctx = {
+            "titulo":      str(sec.get("titulo") or sec.get("nombre") or ""),
+            "descripcion": str(sec.get("descripcion") or ""),
+        }
         if ev:
             secs  = self._tx_secciones
             dur_t = sum(s["duracion"] or 0 for s in secs)
@@ -451,14 +456,14 @@ class MainWindow(tk.Tk):
             dur_cont  = sum(s["duracion"] or 0 for s in secs
                             if s.get("contabilizable", 1))
             dc_m, dc_s = divmod(int(dur_cont), 60)
-            ctx = {
+            ctx.update({
                 "evento":            ev["nombre"],
                 "num_secciones":     str(num_cont),
                 "duracion_total":    f"{m} minutos con {s2} segundos" if s2
                                      else f"{m} minutos",
                 "dur_contabilizable": f"{dc_m} minutos con {dc_s} segundos" if dc_s
                                       else f"{dc_m} minutos",
-            }
+            })
 
         # Siempre escribir a un archivo regen separado para evitar bloquear
         # el archivo original (puede estar bloqueado por OneDrive o por el player)

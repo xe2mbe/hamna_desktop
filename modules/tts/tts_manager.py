@@ -268,6 +268,9 @@ def resolve_variables(text: str, cfg: dict, ctx: dict = None) -> str:
         "{pausa_cada}":      _fmt_seg(cfg.get("pause_tx_time",    200)),
         "{pausa_duracion}":  _fmt_seg(cfg.get("pause_duration",    10)),
         "{pausa_alerta}":    _fmt_seg(cfg.get("pause_alert_before", 10)),
+        # Sección (desde ctx)
+        "{titulo}":              str(ctx.get("titulo",              "")),
+        "{descripcion}":         str(ctx.get("descripcion",         "")),
         # Evento (desde ctx)
         "{evento}":              str(ctx.get("evento",              "")),
         "{num_secciones}":       str(ctx.get("num_secciones",       "")),

@@ -225,27 +225,29 @@ class ViewEventos(tk.Frame):
                 sec_sb.pack(side=tk.RIGHT, fill=tk.Y, before=self._sec_tree)
             sec_sb.set(first, last)
 
-        sec_cols = ("orden", "nombre", "tipo", "dur", "regen", "cont", "dbfs")
+        sec_cols = ("orden", "nombre", "archivo", "tipo", "dur", "regen", "cont", "dbfs")
         self._sec_tree = ttk.Treeview(
             sec_area, columns=sec_cols, show="headings",
             yscrollcommand=_sec_yscroll, selectmode="browse")
         sec_sb.config(command=self._sec_tree.yview)
 
-        self._sec_tree.heading("orden",  text="#",         anchor="center")
-        self._sec_tree.heading("nombre", text="Nombre",    anchor="w")
-        self._sec_tree.heading("tipo",   text="Tipo",      anchor="center")
-        self._sec_tree.heading("dur",    text="Duración",  anchor="e")
-        self._sec_tree.heading("regen",  text="🔄 Regen.", anchor="center")
-        self._sec_tree.heading("cont",   text="Cont.",    anchor="center")
-        self._sec_tree.heading("dbfs",   text="Nivel",    anchor="e")
+        self._sec_tree.heading("orden",   text="#",         anchor="center")
+        self._sec_tree.heading("nombre",  text="Nombre",    anchor="w")
+        self._sec_tree.heading("archivo", text="Archivo",   anchor="w")
+        self._sec_tree.heading("tipo",    text="Tipo",      anchor="center")
+        self._sec_tree.heading("dur",     text="Duración",  anchor="e")
+        self._sec_tree.heading("regen",   text="🔄 Regen.", anchor="center")
+        self._sec_tree.heading("cont",    text="Cont.",     anchor="center")
+        self._sec_tree.heading("dbfs",    text="Nivel",     anchor="e")
 
-        self._sec_tree.column("orden",  anchor="center", minwidth=25, width=30,  stretch=False)
-        self._sec_tree.column("nombre", anchor="w",      minwidth=100, width=160, stretch=True)
-        self._sec_tree.column("tipo",   anchor="center", minwidth=60,  width=75,  stretch=False)
-        self._sec_tree.column("dur",    anchor="e",      minwidth=70,  width=80,  stretch=False)
-        self._sec_tree.column("regen",  anchor="center", minwidth=55,  width=60,  stretch=False)
-        self._sec_tree.column("cont",   anchor="center", minwidth=45,  width=50,  stretch=False)
-        self._sec_tree.column("dbfs",   anchor="e",      minwidth=65,  width=75,  stretch=False)
+        self._sec_tree.column("orden",   anchor="center", minwidth=25,  width=30,  stretch=False)
+        self._sec_tree.column("nombre",  anchor="w",      minwidth=80,  width=130, stretch=True)
+        self._sec_tree.column("archivo", anchor="w",      minwidth=80,  width=130, stretch=True)
+        self._sec_tree.column("tipo",    anchor="center", minwidth=60,  width=75,  stretch=False)
+        self._sec_tree.column("dur",     anchor="e",      minwidth=70,  width=80,  stretch=False)
+        self._sec_tree.column("regen",   anchor="center", minwidth=55,  width=60,  stretch=False)
+        self._sec_tree.column("cont",    anchor="center", minwidth=45,  width=50,  stretch=False)
+        self._sec_tree.column("dbfs",    anchor="e",      minwidth=65,  width=75,  stretch=False)
 
         self._sec_tree.tag_configure("TTS",    foreground=C["tts_fg"])
         self._sec_tree.tag_configure("Audio",  foreground=C["audio_fg"])
@@ -420,11 +422,13 @@ class ViewEventos(tk.Frame):
             ruta  = sec.get("ruta_archivo") or ""
             if ruta and _Path(ruta).is_file() and tipo in ("Audio", "Sonido"):
                 v = measure_dbfs(ruta)
-                dbfs = f"{v} dB" if v is not None else "—"
+                dbfs    = f"{v} dB" if v is not None else "—"
+                archivo = _Path(ruta).name
             else:
-                dbfs = "—"
+                dbfs    = "—"
+                archivo = ""
             self._sec_tree.insert("", "end", iid=iid,
-                values=(orden, sec["nombre"], tipo or "—", dur, regen, cont, dbfs),
+                values=(orden, sec["nombre"], archivo, tipo or "—", dur, regen, cont, dbfs),
                 tags=(tag,))
 
     def _sec_id_from_sel(self) -> int | None:

@@ -132,6 +132,15 @@ def init_db() -> None:
         )
         conn.commit()
 
+    # ── Migración: columnas titulo y descripcion en secciones ─────────────────
+    cols = [r[1] for r in c.execute("PRAGMA table_info(secciones)").fetchall()]
+    if "titulo" not in cols:
+        conn.execute("ALTER TABLE secciones ADD COLUMN titulo TEXT")
+        conn.commit()
+    if "descripcion" not in cols:
+        conn.execute("ALTER TABLE secciones ADD COLUMN descripcion TEXT")
+        conn.commit()
+
     # ── Seed eventos_type ──────────────────────────────────────────────────────
     c.execute("SELECT COUNT(*) FROM eventos_type")
     if c.fetchone()[0] == 0:
@@ -208,22 +217,24 @@ def get_tipos_seccion() -> list[sqlite3.Row]:
 # ── secciones ──────────────────────────────────────────────────────────────────
 def insert_seccion(nombre: str, tipo_seccion_id: int,
                    ruta_archivo: str = None, texto_tts: str = None,
-                   duracion: float = 0,
-                   regenerar_antes: bool = False) -> int:
+                   duracion: float = 0, regenerar_antes: bool = False,
+                   titulo: str = None, descripcion: str = None) -> int:
     with get_connection() as conn:
         c = conn.execute("""
             INSERT INTO secciones
-            (nombre, tipo_seccion_id, ruta_archivo, texto_tts, duracion, regenerar_antes)
-            VALUES (?, ?, ?, ?, ?, ?)
+            (nombre, tipo_seccion_id, ruta_archivo, texto_tts, duracion,
+             regenerar_antes, titulo, descripcion)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """, (nombre, tipo_seccion_id, ruta_archivo, texto_tts, duracion,
-              int(regenerar_antes)))
+              int(regenerar_antes), titulo, descripcion))
         conn.commit()
         return c.lastrowid
 
 
 def update_seccion(seccion_id: int, nombre: str, ruta_archivo: str = None,
                    texto_tts: str = None, duracion: float = None,
-                   regenerar_antes: bool = None) -> None:
+                   regenerar_antes: bool = None,
+                   titulo: str = None, descripcion: str = None) -> None:
     with get_connection() as conn:
         fields, vals = [], []
         fields.append("nombre=?"); vals.append(nombre)
@@ -235,6 +246,10 @@ def update_seccion(seccion_id: int, nombre: str, ruta_archivo: str = None,
             fields.append("duracion=?"); vals.append(duracion)
         if regenerar_antes is not None:
             fields.append("regenerar_antes=?"); vals.append(int(regenerar_antes))
+        if titulo is not None:
+            fields.append("titulo=?"); vals.append(titulo)
+        if descripcion is not None:
+            fields.append("descripcion=?"); vals.append(descripcion)
         vals.append(seccion_id)
         conn.execute(f"UPDATE secciones SET {', '.join(fields)} WHERE id=?", vals)
         conn.commit()
@@ -253,7 +268,7 @@ def get_all_secciones() -> list[sqlite3.Row]:
         return conn.execute("""
             SELECT s.id, s.nombre, ts.nombre AS tipo,
                    s.ruta_archivo, s.texto_tts, s.duracion, s.creado_en,
-                   s.regenerar_antes
+                   s.regenerar_antes, s.titulo, s.descripcion
             FROM secciones s
             LEFT JOIN tipos_seccion ts ON ts.id = s.tipo_seccion_id
             ORDER BY s.nombre
@@ -265,7 +280,7 @@ def get_seccion_by_id(seccion_id: int) -> sqlite3.Row:
         return conn.execute("""
             SELECT s.id, s.nombre, ts.nombre AS tipo, s.tipo_seccion_id,
                    s.ruta_archivo, s.texto_tts, s.duracion, s.creado_en,
-                   s.regenerar_antes
+                   s.regenerar_antes, s.titulo, s.descripcion
             FROM secciones s
             LEFT JOIN tipos_seccion ts ON ts.id = s.tipo_seccion_id
             WHERE s.id = ?
@@ -277,7 +292,8 @@ def get_secciones_by_evento(evento_id: int) -> list[sqlite3.Row]:
         return conn.execute("""
             SELECT s.id, s.nombre, ts.nombre AS tipo,
                    s.ruta_archivo, s.texto_tts, s.duracion, s.creado_en,
-                   s.regenerar_antes, es.orden, es.contabilizable
+                   s.regenerar_antes, s.titulo, s.descripcion,
+                   es.orden, es.contabilizable
             FROM secciones s
             JOIN evento_secciones es ON es.seccion_id = s.id
             LEFT JOIN tipos_seccion ts ON ts.id = s.tipo_seccion_id
