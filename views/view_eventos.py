@@ -117,6 +117,10 @@ class ViewEventos(tk.Frame):
         HButton(tb, "↺ Actualizar",
                 command=self.load_eventos,
                 variant="info").pack(side=tk.LEFT, padx=(6, 0))
+        self._btn_export = HButton(tb, "📤 Exportar",
+                command=self._export_evento,
+                variant="warning")
+        self._btn_export.pack(side=tk.LEFT, padx=(6, 0))
 
         self._search_var = tk.StringVar()
         self._search_var.trace_add("write", lambda *_: self._filter())
@@ -467,6 +471,19 @@ class ViewEventos(tk.Frame):
     # ── Acciones de eventos ────────────────────────────────────────────────────
     def _nuevo_evento(self) -> None:
         EventoForm(self, cfg=self.cfg, on_saved=self.load_eventos)
+
+    def _export_evento(self) -> None:
+        if not self._selected_ev:
+            messagebox.showinfo("Selección",
+                "Selecciona un evento primero.", parent=self)
+            return
+        ev = next((e for e in self._all_eventos
+                   if e["id"] == self._selected_ev), None)
+        if not ev:
+            return
+        from forms.export_form import ExportForm
+        ExportForm(self, evento_id=ev["id"],
+                   evento_nombre=ev["nombre"], cfg=self.cfg)
 
     def _edit_evento(self) -> None:
         if not self._selected_ev:
