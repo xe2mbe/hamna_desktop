@@ -25,8 +25,38 @@ logging.basicConfig(
 log = logging.getLogger("hamna")
 
 
+def _ensure_deps() -> None:
+    """Instala dependencias opcionales si no están presentes."""
+    optional = [
+        ("pyloudnorm", "pyloudnorm>=0.1.1"),
+        ("numpy",      "numpy>=1.24.0"),
+    ]
+    missing = []
+    for module, pkg in optional:
+        try:
+            __import__(module)
+        except ImportError:
+            missing.append(pkg)
+
+    if not missing:
+        return
+
+    log.info("Instalando dependencias faltantes: %s", ", ".join(missing))
+    try:
+        import subprocess
+        subprocess.check_call(
+            [sys.executable, "-m", "pip", "install", "--quiet"] + missing,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        log.info("Dependencias instaladas correctamente.")
+    except Exception as exc:
+        log.warning("No se pudieron instalar dependencias automáticamente: %s", exc)
+
+
 def main() -> None:
     log.info("HAMNA Desktop iniciando — Python %s", sys.version.split()[0])
+    _ensure_deps()
 
     # Aplicar paleta de color antes de crear cualquier widget
     import settings as cfg_mod

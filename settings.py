@@ -54,8 +54,9 @@ DEFAULTS: dict = {
     "api_key":         "",
 
     # Audio
-    "audio_device":    "",
-    "audio_volume":    85,
+    "audio_device":      "",
+    "audio_volume":      85,
+    "normalize_target":  -23.0,   # LUFS (EBU R128 broadcast) o dBFS si pyloudnorm no disponible
 
     # General
     "theme":           "dark",

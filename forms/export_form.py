@@ -14,7 +14,7 @@ from ui_theme import C, FONTS, HButton, HDialog
 class ExportForm(HDialog):
     """Ventana de exportación: selección + orden + parámetros → archivo MP3/WAV."""
 
-    _TARGET_DBFS = -18.0   # nivel de normalización estándar broadcast
+    _TARGET_DEFAULT = -23.0   # −23 LUFS = EBU R128 broadcast (dBFS si pyloudnorm no disponible)
 
     def __init__(self, parent, evento_id: int, evento_nombre: str, cfg: dict):
         super().__init__(parent,
@@ -95,7 +95,7 @@ class ExportForm(HDialog):
         tk.Label(self._norm_target_frame, text="Target:",
                  font=FONTS["small"], bg=C["surface"],
                  fg=C["text2"]).pack(side=tk.LEFT)
-        self._target_var = tk.DoubleVar(value=self._TARGET_DBFS)
+        self._target_var = tk.DoubleVar(value=self._TARGET_DEFAULT)
         tk.Spinbox(self._norm_target_frame,
                    from_=-30, to=-6, increment=0.5,
                    textvariable=self._target_var,
@@ -359,16 +359,26 @@ class ExportForm(HDialog):
             return
 
         try:
+            from modules.audio.audio_player import normalize_audio_file, lufs_available
+            use_lufs = lufs_available()
+            method   = "LUFS" if use_lufs else "dBFS"
+
             combined = AudioSegment.empty()
             silence  = AudioSegment.silent(duration=silence_ms)
             total    = len(secs)
 
             for i, s in enumerate(secs):
-                self.after(0, self._update_progress, i, total,
-                           f"({i+1}/{total})  {s['nombre']}…")
-                audio = AudioSegment.from_file(s["ruta_archivo"])
+                label = (f"({i+1}/{total})  {s['nombre']}"
+                         + (f" — normalizando a {target_db} {method}…"
+                            if normalize else "…"))
+                self.after(0, self._update_progress, i, total, label)
+
                 if normalize:
-                    audio = audio.apply_gain(target_db - audio.dBFS)
+                    ruta = normalize_audio_file(s["ruta_archivo"], target_db)
+                else:
+                    ruta = s["ruta_archivo"]
+
+                audio     = AudioSegment.from_file(ruta)
                 combined += audio
                 if i < total - 1:
                     combined += silence

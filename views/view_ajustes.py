@@ -1203,14 +1203,58 @@ class ViewAjustes(tk.Frame):
         tk.Label(body_n, text=t("audio.normalize_secs_hint"),
                  font=FONTS["small"], bg=C["surface"], fg=C["text3"],
                  wraplength=420, justify="left").pack(anchor="w", pady=(4, 0))
+
+        # Target de normalización + indicador de método
+        tgt_row = tk.Frame(body_n, bg=C["surface"])
+        tgt_row.pack(anchor="w", pady=(10, 0))
+        tk.Label(tgt_row, text="Nivel objetivo:",
+                 font=FONTS["small"], bg=C["surface"],
+                 fg=C["text2"]).pack(side=tk.LEFT)
+
+        self._norm_target_var = tk.DoubleVar(
+            value=float(self.cfg.get("normalize_target", -23.0)))
+        tk.Spinbox(tgt_row, from_=-40, to=-6, increment=0.5,
+                   textvariable=self._norm_target_var,
+                   width=7, font=FONTS["body"],
+                   bg=C["input_bg"], fg=C["text"],
+                   insertbackground=C["text"],
+                   buttonbackground=C["surface2"],
+                   relief="flat", bd=1,
+                   highlightthickness=1,
+                   highlightcolor=C["border"],
+                   highlightbackground=C["border"]
+                   ).pack(side=tk.LEFT, padx=(6, 4))
+
+        # Presets rápidos
+        preset_cb = ttk.Combobox(tgt_row,
+            values=["-23  (EBU R128 Broadcast)",
+                    "-16  (Podcasts / Streaming)",
+                    "-18  (Referencia común)"],
+            state="readonly", width=24)
+        preset_cb.pack(side=tk.LEFT, padx=(0, 8))
+
+        def _apply_preset(e):
+            val = preset_cb.get().split()[0]
+            try:
+                self._norm_target_var.set(float(val))
+            except ValueError:
+                pass
+        preset_cb.bind("<<ComboboxSelected>>", _apply_preset)
+
+        tk.Label(body_n,
+                 text="−23 LUFS = EBU R128 broadcast · −16 LUFS = podcasts/streaming · −18 = referencia común",
+                 font=FONTS["small"], bg=C["surface"],
+                 fg=C["text3"]).pack(anchor="w", pady=(4, 0))
+
         HButton(body_n, t("audio.save"),
                 command=self._save_audio,
                 variant="success").pack(anchor="w", pady=(10, 0))
 
     def _save_audio(self) -> None:
-        self.cfg["audio_device"] = self._audio_dev.get()
-        self.cfg["audio_volume"] = int(self._audio_vol.get())
+        self.cfg["audio_device"]      = self._audio_dev.get()
+        self.cfg["audio_volume"]      = int(self._audio_vol.get())
         self.cfg["section_normalize"] = bool(self._section_normalize_var.get())
+        self.cfg["normalize_target"]  = float(self._norm_target_var.get())
         cfg_mod.save(self.cfg)
         messagebox.showinfo(t("audio.saved_title"), t("audio.saved_msg"))
 

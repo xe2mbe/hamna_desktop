@@ -1,15 +1,24 @@
 # HAMNA Desktop — Windows 10/11 · Python 3.13
 # Instalar con: pip install -r requirements.txt
 
-pyserial>=3.5
-pygame>=2.6.0
-pyttsx3>=2.90
-pydub>=0.25.1
-mutagen>=1.47.0
-requests>=2.31.0
-tkcalendar>=1.6.1
+# Audio
+pydub>=0.25.1          # decodificación / procesamiento de audio (requiere ffmpeg en PATH)
+pygame>=2.6.0          # reproducción de audio
+mutagen>=1.47.0        # lectura de metadatos ID3 / duración
+pyloudnorm>=0.1.1      # normalización LUFS / ITU-R BS.1770 (EBU R128)
+numpy>=1.24.0          # requerido por pyloudnorm
 
-# Azure TTS — integrado via REST, no requiere SDK adicional
+# Síntesis de voz
+pyttsx3>=2.90          # TTS local (SAPI5 en Windows)
+
+# Red / comunicaciones
+requests>=2.31.0       # llamadas REST (Azure TTS, API PTT)
+pyserial>=3.5          # PTT por puerto serial
 
 # ASL AllStarLink — SFTP upload + AMI command
 paramiko>=3.4.0
+
+# UI
+tkcalendar>=1.6.1      # widget de calendario en formularios
+
+# Azure TTS — integrado via REST, no requiere SDK adicional

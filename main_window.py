@@ -891,64 +891,45 @@ class MainWindow(tk.Tk):
 
     # ── Normalización de nivel de audio ───────────────────────────────────────
     def _compute_tx_target_dBFS(self, secs: list) -> float:
-        """Calcula el nivel de referencia del evento como promedio dBFS de sus
-        secciones Audio/Sonido con archivo válido. Devuelve -18.0 si no hay datos."""
-        from modules.audio.audio_player import measure_dbfs
-        levels = []
+        """Determina el target de normalización para la transmisión en curso.
+
+        Registra en el log el nivel promedio actual del evento (informativo) y
+        devuelve el target configurado en Ajustes (normalize_target).
+        Usa LUFS si pyloudnorm está disponible; si no, usa dBFS.
+        """
+        from modules.audio.audio_player import (measure_lufs, measure_dbfs,
+                                                 lufs_available)
+        use_lufs = lufs_available()
+        levels   = []
         for s in secs:
             if s.get("tipo") in ("Audio", "Sonido"):
                 ruta = s.get("ruta_archivo") or ""
                 if ruta and Path(ruta).is_file():
-                    v = measure_dbfs(ruta)
+                    v = measure_lufs(ruta) if use_lufs else measure_dbfs(ruta)
                     if v is not None:
                         levels.append(v)
-        if not levels:
-            return -18.0
-        return round(sum(levels) / len(levels), 1)
+        unit = "LUFS" if use_lufs else "dBFS"
+        if levels:
+            avg = round(sum(levels) / len(levels), 1)
+            log.info("Nivel promedio del evento: %.1f %s (%d secc.)",
+                     avg, unit, len(levels))
+        else:
+            log.info("Sin secciones medibles — usando target configurado")
+        target = float(self.cfg.get("normalize_target", -23.0))
+        log.info("Target de normalización: %.1f %s", target, unit)
+        return target
 
-    def _get_normalized_audio(self, filepath: str, target_dBFS: float) -> str:
-        """Normaliza *filepath* al *target_dBFS* indicado y devuelve la ruta del
-        archivo resultante (cacheado en media/sonidos/ con prefijo '_norm_').
-
-        Si pydub no está disponible o falla, devuelve el filepath original.
-        El cache se invalida automáticamente cuando el archivo fuente cambia.
+    def _get_normalized_audio(self, filepath: str, target: float) -> str:
+        """Normaliza *filepath* al *target* indicado usando LUFS o dBFS según
+        disponibilidad, con caché en media/sonidos/.
+        Devuelve filepath original ante cualquier fallo.
         """
-        try:
-            from pydub import AudioSegment
-        except ImportError:
-            log.warning("pydub no disponible — usando audio sin normalizar")
-            return filepath
-
-        src = Path(filepath)
-        if not src.is_file():
-            return filepath
-
+        from modules.audio.audio_player import normalize_audio_file
         cache_dir = Path(__file__).parent / "media" / "sonidos"
-        cache_dir.mkdir(parents=True, exist_ok=True)
-        # El nombre del cache incluye el target para evitar colisiones
-        t_tag = str(target_dBFS).replace("-", "n").replace(".", "d")
-        cache_path = cache_dir / f"_norm_{src.stem}_{t_tag}{src.suffix}"
-
-        src_mtime = src.stat().st_mtime
-        if cache_path.is_file() and cache_path.stat().st_mtime >= src_mtime:
-            return str(cache_path)
-
-        try:
-            audio = AudioSegment.from_file(str(src))
-            change_dB = target_dBFS - audio.dBFS
-            normalized = audio.apply_gain(change_dB)
-            fmt = src.suffix.lstrip(".").lower() or "mp3"
-            normalized.export(str(cache_path), format=fmt)
-            os.utime(str(cache_path), (src_mtime, src_mtime))
-            log.info("Audio normalizado: %s → %.1f dBFS (cache: %s)",
-                     src.name, target_dBFS, cache_path.name)
-            return str(cache_path)
-        except Exception as exc:
-            log.warning("Error normalizando '%s': %s", filepath, exc)
-            return filepath
+        return normalize_audio_file(filepath, target, cache_dir)
 
     def _pause_audio_target_dBFS(self) -> float:
-        """dBFS objetivo para los audios de pausa: nivel del evento + offset del slider."""
+        """Target para audios de pausa: target del evento + offset del slider."""
         pause_vol = int(self.cfg.get("pause_volume", 80))
         # 100 % → 0 dB de offset, cada punto = −0.4 dB
         offset_dB = (pause_vol - 100) * 0.4

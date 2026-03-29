@@ -8,6 +8,7 @@ secuencial sin restricciones, usa AudioPlayer(use_subprocess=True): cada
 reproducción se lanza en un proceso hijo independiente, con su propio
 contexto MCI.  Esto es el modo recomendado para el reproductor de pausas.
 """
+import os
 import sys
 import threading
 import subprocess
@@ -193,6 +194,110 @@ def measure_dbfs(filepath: str, sample_ms: int = 10_000) -> float | None:
     except Exception as exc:
         log.debug("measure_dbfs('%s'): %s", filepath, exc)
         return None
+
+
+def measure_lufs(filepath: str) -> float | None:
+    """Mide el loudness integrado (LUFS / LKFS) según ITU-R BS.1770-4.
+
+    Requiere pyloudnorm + pydub.  Devuelve float (ej. -23.5) o None si
+    pyloudnorm no está disponible, el archivo es silencioso o falla.
+    """
+    try:
+        import pyloudnorm as pyln
+        import numpy as np
+        from pydub import AudioSegment
+
+        audio   = AudioSegment.from_file(filepath)
+        samples = np.array(audio.get_array_of_samples(), dtype=np.float32)
+        samples /= 2 ** (audio.sample_width * 8 - 1)   # normalizar a [-1, 1]
+        if audio.channels == 2:
+            samples = samples.reshape((-1, 2))
+
+        meter = pyln.Meter(audio.frame_rate)
+        lufs  = meter.integrated_loudness(samples)
+
+        if lufs != lufs or lufs == float("-inf"):   # NaN o silencio total
+            return None
+        return round(lufs, 1)
+    except Exception as exc:
+        log.debug("measure_lufs('%s'): %s", filepath, exc)
+        return None
+
+
+def lufs_available() -> bool:
+    """Devuelve True si pyloudnorm está instalado."""
+    try:
+        import pyloudnorm  # noqa: F401
+        return True
+    except ImportError:
+        return False
+
+
+def normalize_audio_file(filepath: str, target: float,
+                          cache_dir: "Path | str | None" = None) -> str:
+    """Normaliza un archivo de audio al nivel *target* y devuelve la ruta
+    del archivo resultante (cacheado).
+
+    Usa LUFS (ITU-R BS.1770) si pyloudnorm está disponible; de lo contrario
+    usa dBFS (RMS pydub).  Incluye limitador de true-peak a −0.5 dBTP para
+    evitar clipping.
+
+    *cache_dir* — directorio de caché; si es None usa el mismo directorio
+    del archivo fuente.  Devuelve *filepath* original ante cualquier fallo.
+    """
+    src = Path(filepath)
+    if not src.is_file():
+        return filepath
+
+    _cache_dir = Path(cache_dir) if cache_dir else src.parent
+    _cache_dir.mkdir(parents=True, exist_ok=True)
+
+    use_lufs = lufs_available()
+    method   = "lufs" if use_lufs else "dbfs"
+    t_tag    = str(target).replace("-", "n").replace(".", "d")
+    cache_path = _cache_dir / f"_norm_{src.stem}_{method}_{t_tag}{src.suffix}"
+
+    src_mtime = src.stat().st_mtime
+    if cache_path.is_file() and cache_path.stat().st_mtime >= src_mtime:
+        return str(cache_path)
+
+    try:
+        from pydub import AudioSegment
+        audio = AudioSegment.from_file(str(src))
+
+        # Medir nivel actual
+        if use_lufs:
+            current = measure_lufs(str(src))
+            if current is None:                     # archivo muy corto → dBFS
+                current = audio.dBFS
+        else:
+            current = audio.dBFS
+
+        if current is None or current == float("-inf"):
+            return filepath
+
+        change_dB = target - current
+        # Nunca boostar más de +20 dB para evitar saturación extrema
+        change_dB = min(change_dB, 20.0)
+        normalized = audio.apply_gain(change_dB)
+
+        # Limitador de true-peak: retrocede si hay clipping
+        peak = normalized.max_dBFS
+        if peak > -0.5:
+            normalized = normalized.apply_gain(-0.5 - peak)
+
+        fmt = src.suffix.lstrip(".").lower() or "mp3"
+        if fmt == "m4a":
+            fmt = "mp4"
+        normalized.export(str(cache_path), format=fmt)
+        os.utime(str(cache_path), (src_mtime, src_mtime))
+        log.info("Normalizado (%s): %s  %.1f → %.1f  (cache: %s)",
+                 method.upper(), src.name, current, target, cache_path.name)
+        return str(cache_path)
+
+    except Exception as exc:
+        log.warning("Error normalizando '%s': %s", filepath, exc)
+        return filepath
 
 
 class AudioPlayer:
