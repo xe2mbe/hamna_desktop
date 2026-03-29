@@ -203,7 +203,8 @@ class ViewAjustes(tk.Frame):
         self._font_size_combo.set(self._FONT_SIZE_RMAP.get(cur_size, t("general.font_md")))
 
         self._lbl(body, t("general.theme"))
-        self._theme_combo = self._combo_row(body, "theme", ["dark", "light"])
+        self._theme_combo = self._combo_row(body, "theme",
+            ["dark", "midnight", "amber", "forest", "ocean", "steel", "light", "paper"])
 
         self._theme_note = tk.Label(body,
             text=t("general.theme_restart"),

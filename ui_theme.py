@@ -62,6 +62,180 @@ PALETTES: dict[str, dict] = {
         "sonido_bg": "#fef3c7",   # ámbar muy claro
         "sonido_fg": "#b45309",   # ámbar oscuro
     },
+
+    # ── Midnight — Negro + violeta (astronomía / espacio) ─────────────────────
+    "midnight": {
+        "bg":        "#06000f",   # negro con tinte violeta
+        "surface":   "#100020",   # tarjetas violeta muy oscuro
+        "surface2":  "#1c0038",   # cabeceras — violeta profundo
+        "border":    "#42186e",   # borde violeta visible
+        "accent":    "#a855f7",   # violeta eléctrico
+        "accent_h":  "#c084fc",   # hover más claro
+        "success":   "#06b6d4",   # cian brillante
+        "success_h": "#22d3ee",
+        "danger":    "#f43f5e",   # rosa-rojo
+        "danger_h":  "#fb7185",
+        "warning":   "#fb923c",   # naranja
+        "warning_h": "#fdba74",
+        "text":      "#f3e8ff",   # blanco lavanda — alto contraste
+        "text2":     "#c4b5fd",   # violeta claro
+        "text3":     "#6d28d9",   # violeta muted
+        "input_bg":  "#0c0018",
+        "header":    "#030008",
+        "header_fg": "#f3e8ff",
+        "on_air":    "#f43f5e",
+        "tts_bg":    "#200040",
+        "tts_fg":    "#d8b4fe",
+        "audio_bg":  "#001a20",
+        "audio_fg":  "#22d3ee",
+        "sonido_bg": "#1f0d00",
+        "sonido_fg": "#fdba74",
+    },
+
+    # ── Amber — Cálido oscuro + ámbar (radio vintage / tubo de vacío) ─────────
+    "amber": {
+        "bg":        "#0a0800",   # negro cálido
+        "surface":   "#160f00",   # tarjetas marrón muy oscuro
+        "surface2":  "#221700",   # cabeceras
+        "border":    "#5c3d00",   # borde ámbar visible
+        "accent":    "#f59e0b",   # ámbar puro
+        "accent_h":  "#fbbf24",
+        "success":   "#65a30d",   # lima — señal OK en radio
+        "success_h": "#84cc16",
+        "danger":    "#ef4444",
+        "danger_h":  "#f87171",
+        "warning":   "#d97706",
+        "warning_h": "#f59e0b",
+        "text":      "#fff8e1",   # blanco cálido — alto contraste
+        "text2":     "#fcd34d",   # amarillo dorado
+        "text3":     "#7c4f08",   # ámbar muted
+        "input_bg":  "#0e0b00",
+        "header":    "#040300",
+        "header_fg": "#fff8e1",
+        "on_air":    "#ef4444",
+        "tts_bg":    "#1a0a00",
+        "tts_fg":    "#fb923c",
+        "audio_bg":  "#001400",
+        "audio_fg":  "#86efac",
+        "sonido_bg": "#1c1000",
+        "sonido_fg": "#fcd34d",
+    },
+
+    # ── Forest — Verde oscuro (radio de campo / militar) ──────────────────────
+    "forest": {
+        "bg":        "#020a04",   # negro verdoso
+        "surface":   "#071309",   # tarjetas verde oscuro
+        "surface2":  "#0e2012",   # cabeceras
+        "border":    "#1a4a20",   # borde verde visible
+        "accent":    "#22c55e",   # verde brillante
+        "accent_h":  "#4ade80",
+        "success":   "#14b8a6",   # teal
+        "success_h": "#2dd4bf",
+        "danger":    "#ef4444",
+        "danger_h":  "#f87171",
+        "warning":   "#eab308",   # amarillo campo
+        "warning_h": "#facc15",
+        "text":      "#dcfce7",   # verde muy claro — alto contraste
+        "text2":     "#86efac",   # verde claro
+        "text3":     "#166534",   # verde muted
+        "input_bg":  "#030c05",
+        "header":    "#010502",
+        "header_fg": "#dcfce7",
+        "on_air":    "#ef4444",
+        "tts_bg":    "#18154a",
+        "tts_fg":    "#a5b4fc",
+        "audio_bg":  "#001a08",
+        "audio_fg":  "#4ade80",
+        "sonido_bg": "#1a0f00",
+        "sonido_fg": "#fbbf24",
+    },
+
+    # ── Ocean — Azul profundo + cian (radio marina / costera) ─────────────────
+    "ocean": {
+        "bg":        "#00080f",   # negro azul océano
+        "surface":   "#001525",   # tarjetas azul profundo
+        "surface2":  "#002035",   # cabeceras
+        "border":    "#004f82",   # borde azul visible
+        "accent":    "#06b6d4",   # cian brillante
+        "accent_h":  "#22d3ee",
+        "success":   "#10b981",
+        "success_h": "#34d399",
+        "danger":    "#f43f5e",
+        "danger_h":  "#fb7185",
+        "warning":   "#f59e0b",
+        "warning_h": "#fbbf24",
+        "text":      "#e0f7fa",   # blanco helado — alto contraste
+        "text2":     "#67e8f9",   # cian claro
+        "text3":     "#0e5f75",   # cian muted
+        "input_bg":  "#000d18",
+        "header":    "#00040a",
+        "header_fg": "#e0f7fa",
+        "on_air":    "#f43f5e",
+        "tts_bg":    "#0f0030",
+        "tts_fg":    "#a78bfa",
+        "audio_bg":  "#001e20",
+        "audio_fg":  "#22d3ee",
+        "sonido_bg": "#1a0a00",
+        "sonido_fg": "#fbbf24",
+    },
+
+    # ── Steel — Gris metálico neutro (estudio / consola broadcast) ────────────
+    "steel": {
+        "bg":        "#08090c",   # negro neutro casi puro
+        "surface":   "#111318",   # tarjetas gris muy oscuro
+        "surface2":  "#1a1e26",   # cabeceras gris oscuro
+        "border":    "#2e3547",   # borde gris-azul visible
+        "accent":    "#60a5fa",   # azul claro
+        "accent_h":  "#93c5fd",
+        "success":   "#34d399",
+        "success_h": "#6ee7b7",
+        "danger":    "#f87171",
+        "danger_h":  "#fca5a5",
+        "warning":   "#fbbf24",
+        "warning_h": "#fde68a",
+        "text":      "#f1f5f9",   # blanco frío — alto contraste
+        "text2":     "#94a3b8",   # gris-azul
+        "text3":     "#475569",   # gris muted
+        "input_bg":  "#0d0f14",
+        "header":    "#040506",
+        "header_fg": "#f1f5f9",
+        "on_air":    "#f87171",
+        "tts_bg":    "#181530",
+        "tts_fg":    "#a5b4fc",
+        "audio_bg":  "#081a12",
+        "audio_fg":  "#6ee7b7",
+        "sonido_bg": "#1f1600",
+        "sonido_fg": "#fde68a",
+    },
+
+    # ── Paper — Cálido claro (alta legibilidad / exterior) ────────────────────
+    "paper": {
+        "bg":        "#f5f0e8",   # papel cálido — no blanco puro
+        "surface":   "#fffcf5",   # tarjetas blanco marfil
+        "surface2":  "#e8dbc8",   # cabeceras arena
+        "border":    "#b0956e",   # borde marrón cálido visible
+        "accent":    "#1d4ed8",   # azul profundo
+        "accent_h":  "#1e40af",
+        "success":   "#047857",
+        "success_h": "#065f46",
+        "danger":    "#dc2626",
+        "danger_h":  "#b91c1c",
+        "warning":   "#b45309",
+        "warning_h": "#92400e",
+        "text":      "#1c1007",   # marrón casi negro — máximo contraste
+        "text2":     "#4a3520",   # marrón cálido oscuro
+        "text3":     "#8c7458",   # marrón muted
+        "input_bg":  "#fffef8",
+        "header":    "#2d1a0a",   # marrón oscuro — contraste total con bg
+        "header_fg": "#f5f0e8",
+        "on_air":    "#dc2626",
+        "tts_bg":    "#eae6f8",
+        "tts_fg":    "#4f46e5",
+        "audio_bg":  "#d8f0e0",
+        "audio_fg":  "#047857",
+        "sonido_bg": "#faeacc",
+        "sonido_fg": "#b45309",
+    },
 }
 
 # C es la paleta activa — se actualiza con apply_palette() antes de crear widgets

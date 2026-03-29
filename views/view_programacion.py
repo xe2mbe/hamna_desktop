@@ -17,7 +17,11 @@ class ViewProgramacion(tk.Frame):
         self._selected_ev   = None
         self._all_eventos   = []
         self._schedule      = []
-        self._lbl_ahora     = None   # referencia al label "AHORA — HH:MM"
+        self._lbl_ahora     = None   # referencia al label de hora actual
+        self._lbl_ahora_dot = None   # "●" antes del label
+        self._lbl_ahora_line= None   # línea horizontal
+        self._week_offset   = 0      # 0=esta semana, -1=ant, +1=sig, …
+        self._countdown_jobs: list = []
         self._build()
         self.load_data()
         self._tick_ahora()
@@ -37,14 +41,15 @@ class ViewProgramacion(tk.Frame):
                 variant="danger").pack(side=tk.LEFT, padx=(6, 0))
 
         HButton(tb, "→ Sig",
-                command=lambda: None,
+                command=lambda: self._shift_week(+1),
                 variant="info").pack(side=tk.RIGHT)
         HButton(tb, "← Ant",
-                command=lambda: None,
+                command=lambda: self._shift_week(-1),
                 variant="info").pack(side=tk.RIGHT, padx=(0, 4))
-        tk.Label(tb, text="Semana",
+        self._lbl_semana = tk.Label(tb, text="",
                  font=FONTS["body"], bg=C["surface"],
-                 fg=C["text2"]).pack(side=tk.RIGHT, padx=(0, 8))
+                 fg=C["text2"])
+        self._lbl_semana.pack(side=tk.RIGHT, padx=(0, 8))
 
         # Stats
         stats = tk.Frame(self, bg=C["bg"], padx=14, pady=8)
@@ -281,11 +286,20 @@ class ViewProgramacion(tk.Frame):
         self.after(1000, self._tick_clock)
 
     def _tick_ahora(self) -> None:
-        """Actualiza el texto 'AHORA — HH:MM' cada minuto sin reconstruir la timeline."""
+        """Actualiza el indicador de hora actual cada minuto."""
         if self._lbl_ahora:
             try:
-                self._lbl_ahora.config(
-                    text=f"AHORA — {datetime.now().strftime('%H:%M')}")
+                on_air_now = self._on_air_id is not None
+                hhmm       = datetime.now().strftime("%H:%M")
+                txt        = f"AHORA — {hhmm}" if on_air_now else f"{hhmm} — Sin transmisión"
+                fg_lbl     = C["danger"] if on_air_now else C["text3"]
+                fg_dot     = C["danger"] if on_air_now else C["text3"]
+                fg_line    = C["danger"] if on_air_now else C["border"]
+                self._lbl_ahora.config(text=txt, fg=fg_lbl)
+                if self._lbl_ahora_dot:
+                    self._lbl_ahora_dot.config(fg=fg_dot)
+                if self._lbl_ahora_line:
+                    self._lbl_ahora_line.config(bg=fg_line)
             except Exception:
                 self._lbl_ahora = None   # widget destruido (reload de datos)
         self.after(60_000, self._tick_ahora)
@@ -346,10 +360,70 @@ class ViewProgramacion(tk.Frame):
 
         return best_dt, best_name
 
+    # ── Navegación de semana ──────────────────────────────────────────────────
+    def _shift_week(self, delta: int) -> None:
+        self._week_offset += delta
+        self._update_week_label()
+        self._render_timeline()
+
+    def _week_range(self) -> tuple[date, date]:
+        today      = date.today()
+        week_start = today - timedelta(days=today.weekday()) \
+                     + timedelta(weeks=self._week_offset)
+        return week_start, week_start + timedelta(days=6)
+
+    def _update_week_label(self) -> None:
+        ws, we = self._week_range()
+        if self._week_offset == 0:
+            text = "Esta semana"
+        elif self._week_offset == -1:
+            text = "Semana anterior"
+        elif self._week_offset == 1:
+            text = "Semana siguiente"
+        else:
+            _m = ["ene","feb","mar","abr","may","jun",
+                  "jul","ago","sep","oct","nov","dic"]
+            text = f"{ws.day} {_m[ws.month-1]} – {we.day} {_m[we.month-1]}"
+        self._lbl_semana.config(text=text)
+
+    def _sched_dates_in_week(self, s,
+                              week_start: date, week_end: date) -> list[date]:
+        """Devuelve las fechas de ocurrencia de 's' dentro de la semana dada."""
+        rec = (s["recurrencia"] or "ninguna").lower()
+        try:
+            base = date.fromisoformat(s["fecha"])
+        except (ValueError, TypeError):
+            return []
+
+        if rec == "ninguna":
+            return [base] if week_start <= base <= week_end else []
+
+        if rec == "diaria":
+            d, out = max(base, week_start), []
+            while d <= week_end:
+                out.append(d); d += timedelta(days=1)
+            return out
+
+        if rec == "semanal":
+            days_ahead = (base.weekday() - week_start.weekday()) % 7
+            occ = week_start + timedelta(days=days_ahead)
+            return [occ] if occ >= base and occ <= week_end else []
+
+        if rec == "lun-vie":
+            d, out = max(base, week_start), []
+            while d <= week_end:
+                if d.weekday() <= 4:
+                    out.append(d)
+                d += timedelta(days=1)
+            return out
+
+        return []
+
     # ── Carga de datos ────────────────────────────────────────────────────────
     def load_data(self) -> None:
         self._all_eventos = db.get_all_eventos()
         self._schedule    = db.get_all_programacion()
+        self._update_week_label()
         self._render_ev_list()
         self._render_timeline()
         self._update_stats()
@@ -458,26 +532,38 @@ class ViewProgramacion(tk.Frame):
         tk.Frame(self._ev_inner, bg=C["surface"], height=1).pack(fill=tk.X)
 
     def _render_timeline(self) -> None:
+        for job in self._countdown_jobs:
+            try:
+                self.after_cancel(job)
+            except Exception:
+                pass
+        self._countdown_jobs = []
+
         for w in self._tl_inner.winfo_children():
             w.destroy()
 
-        if not self._schedule:
-            tk.Label(self._tl_inner,
-                     text="Sin eventos programados.",
+        week_start, week_end = self._week_range()
+        today = date.today()
+        now_h = datetime.now().strftime("%H:%M")
+
+        # Agrupar ocurrencias reales de la semana por fecha
+        week_items: dict[date, list] = {}
+        for s in self._schedule:
+            for occ_date in self._sched_dates_in_week(s, week_start, week_end):
+                week_items.setdefault(occ_date, []).append(s)
+
+        if not week_items:
+            msg = ("Sin eventos programados."
+                   if not self._schedule
+                   else "No hay eventos programados esta semana.")
+            tk.Label(self._tl_inner, text=msg,
                      font=FONTS["body"], bg=C["bg"],
                      fg=C["text3"]).pack(pady=40)
             return
 
-        # Agrupar por fecha
-        days: dict[str, list] = {}
-        for s in self._schedule:
-            days.setdefault(s["fecha"], []).append(s)
-
-        today = date.today().isoformat()
-        now_h = datetime.now().strftime("%H:%M")
-
-        for fecha in sorted(days.keys()):
-            is_today = (fecha == today)
+        for occ_date in sorted(week_items.keys()):
+            fecha    = occ_date.isoformat()
+            is_today = (occ_date == today)
 
             # Cabecera del día
             dh = tk.Frame(self._tl_inner, bg=C["bg"], padx=14, pady=6)
@@ -493,35 +579,74 @@ class ViewProgramacion(tk.Frame):
             tk.Frame(dh, bg=C["border"], height=1).pack(
                 side=tk.LEFT, fill=tk.Y, expand=True)
 
-            # Indicador AHORA
+            sorted_scheds = sorted(week_items[occ_date], key=lambda s: s["hora"])
+
             if is_today:
-                ni = tk.Frame(self._tl_inner, bg=C["bg"],
-                               padx=14, pady=2)
+                # Separar eventos pasados y futuros (on-air va siempre en futuros)
+                past_scheds   = [s for s in sorted_scheds
+                                 if (s["hora"] or "")[:5] < now_h
+                                 and s["evento_id"] != self._on_air_id]
+                future_scheds = [s for s in sorted_scheds
+                                 if (s["hora"] or "")[:5] >= now_h
+                                 or s["evento_id"] == self._on_air_id]
+
+                # Eventos pasados encima de la línea AHORA
+                for sched in past_scheds:
+                    ev = next((e for e in self._all_eventos
+                               if e["id"] == sched["evento_id"]), None)
+                    if ev:
+                        self._make_tl_card(ev, sched, occ_date, is_past=True)
+
+                # Indicador AHORA
+                on_air_now = self._on_air_id is not None
+                dot_fg     = C["danger"] if on_air_now else C["text3"]
+                line_fg    = C["danger"] if on_air_now else C["border"]
+                label_fg   = C["danger"] if on_air_now else C["text3"]
+                ahora_txt  = (f"AHORA — {now_h}"
+                              if on_air_now
+                              else f"{now_h} — Sin transmisión")
+                ni = tk.Frame(self._tl_inner, bg=C["bg"], padx=14, pady=2)
                 ni.pack(fill=tk.X)
-                tk.Label(ni, text="●", font=("Segoe UI", 8),
-                         bg=C["bg"], fg=C["danger"]).pack(side=tk.LEFT)
-                self._lbl_ahora = tk.Label(ni, text=f"AHORA — {now_h}",
-                         font=FONTS["badge"], bg=C["bg"],
-                         fg=C["danger"])
+                self._lbl_ahora_dot = tk.Label(
+                    ni, text="●", font=("Segoe UI", 8),
+                    bg=C["bg"], fg=dot_fg)
+                self._lbl_ahora_dot.pack(side=tk.LEFT)
+                self._lbl_ahora = tk.Label(
+                    ni, text=ahora_txt,
+                    font=FONTS["badge"], bg=C["bg"], fg=label_fg)
                 self._lbl_ahora.pack(side=tk.LEFT, padx=(4, 0))
-                tk.Frame(ni, bg=C["danger"], height=1).pack(
+                self._lbl_ahora_line = tk.Frame(ni, bg=line_fg, height=1)
+                self._lbl_ahora_line.pack(
                     side=tk.LEFT, fill=tk.X, expand=True, padx=(8, 0))
 
-            for sched in sorted(days[fecha], key=lambda s: s["hora"]):
-                ev = next((e for e in self._all_eventos
-                           if e["id"] == sched["evento_id"]), None)
-                if ev:
-                    self._make_tl_card(ev, sched)
+                # Eventos futuros debajo de la línea AHORA
+                for sched in future_scheds:
+                    ev = next((e for e in self._all_eventos
+                               if e["id"] == sched["evento_id"]), None)
+                    if ev:
+                        self._make_tl_card(ev, sched, occ_date)
+            else:
+                for sched in sorted_scheds:
+                    ev = next((e for e in self._all_eventos
+                               if e["id"] == sched["evento_id"]), None)
+                    if ev:
+                        self._make_tl_card(ev, sched, occ_date)
 
-    def _make_tl_card(self, ev, sched) -> None:
+    def _make_tl_card(self, ev, sched,
+                      occurrence_date: date = None,
+                      is_past: bool = False) -> None:
         is_on_air = self._on_air_id == ev["id"]
-        is_today  = self._sched_occurs_on(sched, date.today())
+        is_today  = (occurrence_date == date.today()) if occurrence_date is not None \
+                    else self._sched_occurs_on(sched, date.today())
         secs  = db.get_secciones_by_evento(ev["id"])
         dur   = sum(s["duracion"] for s in secs)
 
         if is_on_air:
             color   = C["danger"]
             card_bg = C["header"]
+        elif is_past:
+            color   = "#383838"   # gris oscuro
+            card_bg = C["bg"]
         elif is_today:
             color   = "#34d399"   # verde
             card_bg = "#0b2318"   # fondo verde oscuro
@@ -534,10 +659,13 @@ class ViewProgramacion(tk.Frame):
         row.pack(fill=tk.X)
 
         # Hora
+        hora_fg = (C["header_fg"] if is_on_air
+                   else C["text3"] if is_past
+                   else "#34d399" if is_today
+                   else C["text3"])
         tk.Label(row, text=sched["hora"],
                  font=FONTS["mono_sm"], bg=C["bg"],
-                 fg="#34d399" if is_today and not is_on_air else C["text3"],
-                 width=7).pack(side=tk.LEFT)
+                 fg=hora_fg, width=7).pack(side=tk.LEFT)
 
         # Card
         card = tk.Frame(row, bg=card_bg, padx=12, pady=8,
@@ -548,7 +676,7 @@ class ViewProgramacion(tk.Frame):
 
         info = tk.Frame(card, bg=card_bg, padx=8)
         info.pack(side=tk.LEFT, fill=tk.X, expand=True)
-        fg_main = C["header_fg"] if is_on_air else C["text"]
+        fg_main = C["text3"] if is_past else (C["header_fg"] if is_on_air else C["text"])
         fg_sec  = C["header_fg"] if is_on_air else C["text3"]
         tk.Label(info, text=ev["nombre"], font=FONTS["body"],
                  bg=card_bg, fg=fg_main).pack(anchor="w")
@@ -581,6 +709,19 @@ class ViewProgramacion(tk.Frame):
             tk.Label(card, text="● AL AIRE",
                      font=FONTS["badge"], bg=card_bg,
                      fg=C["danger"]).pack(side=tk.RIGHT, padx=(0, 4))
+        else:
+            try:
+                occ = occurrence_date if occurrence_date is not None else date.today()
+                event_dt = datetime.strptime(
+                    f"{occ.isoformat()} {(sched['hora'] or '00:00')[:5]}",
+                    "%Y-%m-%d %H:%M")
+            except Exception:
+                event_dt = None
+            if event_dt:
+                lbl_cd = tk.Label(card, text="", font=FONTS["small"],
+                                  bg=card_bg, fg=C["text3"])
+                lbl_cd.pack(side=tk.RIGHT, padx=(0, 6))
+                self._start_card_countdown(lbl_cd, event_dt)
 
         # Botón transmitir (hover)
         btn_tx = tk.Button(card,
@@ -620,6 +761,35 @@ class ViewProgramacion(tk.Frame):
                   activebackground=card_bg,
                   command=lambda eid=ev["id"]: self._open_prog_modal(eid)
                   ).pack(side=tk.RIGHT, padx=(0, 2))
+
+    def _start_card_countdown(self, lbl: tk.Label, event_dt: datetime) -> None:
+        """Inicia el tick de cuenta regresiva para una tarjeta de evento."""
+        def _tick():
+            now       = datetime.now()
+            secs_left = int((event_dt - now).total_seconds())
+            try:
+                if secs_left <= 0:
+                    lbl.config(text="Pasado", fg=C["text3"])
+                    return
+                if secs_left >= 86400:             # > 24 h → Xd Xh
+                    d, rem = divmod(secs_left, 86400)
+                    h = rem // 3600
+                    lbl.config(text=f"⏱ {d}d {h}h", fg=C["text3"])
+                elif secs_left >= 3600:            # 1-24 h → HH:MM:SS
+                    h, rem = divmod(secs_left, 3600)
+                    m, s   = divmod(rem, 60)
+                    lbl.config(text=f"⏱ {h:02d}:{m:02d}:{s:02d}", fg="#fbbf24")
+                elif secs_left >= 900:             # 15 min-1 h → MM:SS naranja
+                    m, s = divmod(secs_left, 60)
+                    lbl.config(text=f"⏱ {m:02d}:{s:02d}", fg="#f97316")
+                else:                              # < 15 min → MM:SS rojo
+                    m, s = divmod(secs_left, 60)
+                    lbl.config(text=f"⏱ {m:02d}:{s:02d}", fg=C["danger"])
+            except Exception:
+                return
+            job = self.after(1000, _tick)
+            self._countdown_jobs.append(job)
+        _tick()
 
     # ── Editor inline ─────────────────────────────────────────────────────────
     def _select_ev(self, ev_id: int) -> None:
