@@ -55,6 +55,18 @@ class SeccionForm(HDialog):
         self._footer = tk.Frame(self, bg=C["bg"])
         self._footer.pack(fill=tk.X, side=tk.BOTTOM)
 
+        # Barra de estado TTS — siempre visible, entre contenido y footer
+        tk.Frame(self, bg=C["border"], height=1).pack(fill=tk.X, side=tk.BOTTOM)
+        self._status_bar = tk.Frame(self, bg=C["surface"], padx=14, pady=6)
+        self._status_bar.pack(fill=tk.X, side=tk.BOTTOM)
+        self._status_lbl = tk.Label(self._status_bar, text="",
+                                     font=FONTS["small"],
+                                     bg=C["surface"], fg=C["text2"])
+        self._status_lbl.pack(anchor="w")
+        self._status_prog = ttk.Progressbar(self._status_bar,
+                                             mode="indeterminate")
+        self._status_bar.pack_forget()   # oculta hasta que se use
+
         # Área scrollable
         scroll_area = tk.Frame(self, bg=C["bg"])
         scroll_area.pack(fill=tk.BOTH, expand=True)
@@ -281,12 +293,6 @@ class SeccionForm(HDialog):
                      text=str(int(float(v))))
                  ).pack(fill=tk.X)
 
-        self._tts_status = tk.Label(d, text="", font=FONTS["small"],
-                                     bg=C["bg"], fg=C["text2"])
-        self._tts_status.pack(anchor="w", pady=(6, 0))
-
-        self._tts_progress = ttk.Progressbar(d, mode="indeterminate")
-
         self._centered_footer([
             ("Cancelar",      "muted",   self._cancel),
             ("Vista previa",  "ghost",   self._preview_vars),
@@ -363,27 +369,46 @@ class SeccionForm(HDialog):
         self._tts_text.insert(tk.INSERT, token)
         self._tts_text.focus_set()
 
+    def _set_converting(self, converting: bool) -> None:
+        """Muestra/oculta la barra de estado y bloquea/desbloquea botones."""
+        if converting:
+            self._status_bar.pack(fill=tk.X, side=tk.BOTTOM,
+                                   before=self._footer)
+            self._status_prog.pack(fill=tk.X, pady=(4, 0))
+            self._status_prog.start(12)
+        else:
+            self._status_prog.stop()
+            self._status_prog.pack_forget()
+        # Bloquear / desbloquear todos los botones del footer
+        for w in self._footer.winfo_children():
+            for child in w.winfo_children():
+                try:
+                    child.config(state="disabled" if converting else "normal")
+                except Exception:
+                    pass
+
     def _convert_tts(self) -> None:
         text = self._tts_text.get("1.0", tk.END).strip()
         if not text:
-            self._tts_status.config(text="⚠ Ingresa el texto a convertir",
+            self._status_bar.pack(fill=tk.X, side=tk.BOTTOM,
+                                   before=self._footer)
+            self._status_lbl.config(text="⚠  Ingresa el texto a convertir",
                                      fg=C["warning"])
             return
-        self._tts_status.config(text="⏳ Convirtiendo...", fg=C["warning"])
-        self._tts_progress.pack(fill=tk.X, pady=(4, 0))
-        self._tts_progress.start(10)
+        self._status_lbl.config(text="⏳  Convirtiendo texto a audio…",
+                                 fg=C["warning"])
+        self._set_converting(True)
 
         def done(ok, result):
-            self._tts_progress.stop()
-            self._tts_progress.pack_forget()
+            self._set_converting(False)
             if ok:
                 self._tts_done = True
                 self._tts_path = result
-                self._tts_status.config(
-                    text=f"✅ Audio generado: {Path(result).name}",
+                self._status_lbl.config(
+                    text=f"✅  Audio generado: {Path(result).name}",
                     fg=C["success"])
             else:
-                self._tts_status.config(text=f"❌ {result}", fg=C["danger"])
+                self._status_lbl.config(text=f"❌  {result}", fg=C["danger"])
 
         # Archivo temporal exclusivo del form — no colisiona con el reproductor
         _out = Path(__file__).parent.parent / f"tts_form_{self._tts_slot}.mp3"
