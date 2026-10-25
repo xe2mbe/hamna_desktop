@@ -11,6 +11,21 @@ ROOT = os.path.dirname(os.path.abspath(__file__))
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
+# ── Usar siempre el Python del .venv ───────────────────────────────────────
+# Si se abre con "python main.py" sin activar el .venv, Windows usa el Python
+# del sistema, que no tiene pygame, pydub, pyaudiowpatch, etc. (sin ellos no
+# funcionan la normalización, el medidor ni el PTT serie). En ese caso se
+# vuelve a abrir HAMNA con el Python del .venv.
+_VENV_DIR = os.path.join(ROOT, ".venv")
+_VENV_PY  = os.path.join(_VENV_DIR, "Scripts", "python.exe")
+if (os.path.isfile(_VENV_PY)
+        and os.path.normcase(os.path.realpath(sys.prefix))
+            != os.path.normcase(os.path.realpath(_VENV_DIR))
+        and not os.environ.get("HAMNA_SIN_VENV")):
+    import subprocess
+    print(f"HAMNA: se abrió con {sys.executable}; reabriendo con el .venv…")
+    sys.exit(subprocess.call([_VENV_PY, os.path.abspath(__file__), *sys.argv[1:]]))
+
 # ── Logging ────────────────────────────────────────────────────────────────
 logging.basicConfig(
     level=logging.INFO,
