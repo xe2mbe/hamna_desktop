@@ -737,10 +737,21 @@ class ViewProgramacion(tk.Frame):
             btn_tx.pack(side=tk.RIGHT)
 
         def _enter(e, b=btn_tx):
-            b.pack(side=tk.RIGHT, padx=(8, 0))
-        def _leave(e, b=btn_tx, on=is_on_air):
-            if not on:
-                b.pack_forget()
+            if not b.winfo_ismapped():
+                b.pack(side=tk.RIGHT, padx=(8, 0))
+        def _leave(e, b=btn_tx, on=is_on_air, c=card):
+            if on:
+                return
+            # Tk manda <Leave> a la tarjeta también cuando el mouse entra a
+            # uno de sus hijos (como este botón). Solo se oculta si el mouse
+            # salió de verdad de la tarjeta; si no, el botón parpadea y no
+            # se puede hacer clic.
+            w = c.winfo_containing(e.x_root, e.y_root)
+            while w is not None:
+                if w is c:
+                    return
+                w = w.master
+            b.pack_forget()
         card.bind("<Enter>", _enter)
         card.bind("<Leave>", _leave)
         card.bind("<Button-1>",

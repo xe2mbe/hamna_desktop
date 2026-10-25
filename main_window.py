@@ -68,6 +68,7 @@ class MainWindow(tk.Tk):
         self._center()
         self._sched_fired: set[int] = set()   # ids ya disparados en este minuto
         self._check_schedule()
+        self._start_level_meter()
 
     # ── Build ─────────────────────────────────────────────────────────────────
     def _build(self) -> None:
@@ -299,6 +300,20 @@ class MainWindow(tk.Tk):
             else:
                 continue
 
+            # ¿Empieza en los próximos 20 min? Preparar sus audios en segundo plano
+            try:
+                h, m = map(int, hora[:5].split(":"))
+                mins_left = (h * 60 + m) - (now.hour * 60 + now.minute)
+            except ValueError:
+                mins_left = -1
+            if 0 < mins_left <= 20:
+                pre_key = (row["id"], today)
+                if not hasattr(self, "_sched_prewarmed"):
+                    self._sched_prewarmed = set()
+                if pre_key not in self._sched_prewarmed:
+                    self._sched_prewarmed.add(pre_key)
+                    self._prewarm_event(row["evento_id"])
+
             # ¿Coincide el HH:MM?
             if hora[:5] != hhmm:
                 continue
@@ -368,7 +383,13 @@ class MainWindow(tk.Tk):
 
         # Calcular nivel de referencia del evento (promedio dBFS de secciones con audio)
         self._tx_target_dBFS = self._compute_tx_target_dBFS(secs)
-        log.info("Nivel de referencia del evento: %.1f dBFS", self._tx_target_dBFS)
+
+        # Normalizar ANTES de activar el PTT, para no dejar silencio al aire.
+        # Si el evento estaba programado, esto ya se hizo 20 min antes.
+        if self.cfg.get("section_normalize", False):
+            self._set_status("Preparando audios…")
+            self.update_idletasks()
+            self._prepare_event_audio(secs)
 
         self._tx_evento_id       = evento_id
         self._tx_secciones       = secs
@@ -860,21 +881,57 @@ class MainWindow(tk.Tk):
                 log.info("Retroceso: %d ms — reanudando desde %d ms (antes: %d ms)",
                          rewind_ms, resume_ms, self._tx_resume_ms)
 
+            # Usar el mismo archivo normalizado que al iniciar la sección,
+            # si no, después de cada pausa vuelve el nivel original.
+            play_path = cur_sec["ruta_archivo"]
+            if self.cfg.get("section_normalize", False):
+                play_path = self._get_normalized_audio(
+                    play_path, self._tx_target_dBFS)
+
             if resume_ms > 0:
                 self._tx_section_start_ms = resume_ms
                 self._tx_sec_elapsed      = resume_ms / 1000.0
-                self._player.play_from_ms(cur_sec["ruta_archivo"],
+                self._player.play_from_ms(play_path,
                                           resume_ms, on_finished=cb)
             else:
                 self._tx_section_start_ms = 0
                 self._tx_sec_elapsed      = 0.0
-                self._player.play(cur_sec["ruta_archivo"], on_finished=cb)
+                self._player.play(play_path, on_finished=cb)
         self._tx_alert_played = False
         self._tx_playing      = True
         self._np.set_playing(True)
         self._np.set_pause_info(None, None)
         self._set_status("Transmitiendo…")
         self._tx_tick()  # reanudar el loop de tick
+
+    # ── Medidor de nivel (vúmetro) ────────────────────────────────────────────
+    def _start_level_meter(self) -> None:
+        """Mide la salida real de audio; si no se puede, mide el archivo."""
+        from modules.audio.level_meter import LoopbackMeter, FileMeter
+        self._loop_meter = LoopbackMeter()
+        self._loop_meter.start()
+        self._file_meter = FileMeter()
+        self._meter_tick()
+
+    def _meter_tick(self) -> None:
+        try:
+            target = float(self.cfg.get("normalize_target", -18.0))
+            lm = self._loop_meter
+            lm.retry_if_failed()
+            if lm.ok:
+                levels = lm.levels()
+                source = f"Salida · {lm.device_name}" if lm.ok else "Salida"
+            else:
+                levels, source = None, "Archivo"
+                path = self._player.current_file
+                if self._tx_playing and path and self._tx_pause_state == "tx":
+                    pos = self._tx_section_start_ms + self._player.get_pos_ms()
+                    levels = self._file_meter.levels(
+                        path, pos, self._player.volume_pct / 100.0)
+            self._np.set_level(levels, source, target)
+        except Exception as e:
+            log.debug("Medidor: %s", e)
+        self.after(100, self._meter_tick)
 
     # ── ASL helper ────────────────────────────────────────────────────────────
     def _asl_play(self, filepath: str, duration: float) -> None:
@@ -891,33 +948,54 @@ class MainWindow(tk.Tk):
 
     # ── Normalización de nivel de audio ───────────────────────────────────────
     def _compute_tx_target_dBFS(self, secs: list) -> float:
-        """Determina el target de normalización para la transmisión en curso.
-
-        Registra en el log el nivel promedio actual del evento (informativo) y
-        devuelve el target configurado en Ajustes (normalize_target).
-        Usa LUFS si pyloudnorm está disponible; si no, usa dBFS.
-        """
-        from modules.audio.audio_player import (measure_lufs, measure_dbfs,
-                                                 lufs_available)
-        use_lufs = lufs_available()
-        levels   = []
-        for s in secs:
-            if s.get("tipo") in ("Audio", "Sonido"):
-                ruta = s.get("ruta_archivo") or ""
-                if ruta and Path(ruta).is_file():
-                    v = measure_lufs(ruta) if use_lufs else measure_dbfs(ruta)
-                    if v is not None:
-                        levels.append(v)
-        unit = "LUFS" if use_lufs else "dBFS"
-        if levels:
-            avg = round(sum(levels) / len(levels), 1)
-            log.info("Nivel promedio del evento: %.1f %s (%d secc.)",
-                     avg, unit, len(levels))
-        else:
-            log.info("Sin secciones medibles — usando target configurado")
+        """Devuelve el nivel objetivo configurado en Ajustes (normalize_target).
+        Antes medía cada sección solo para el log; eso tardaba ~12 s al
+        arrancar y la normalización ya mide cada archivo por su cuenta."""
         target = float(self.cfg.get("normalize_target", -23.0))
-        log.info("Target de normalización: %.1f %s", target, unit)
+        log.info("Target de normalización: %.1f", target)
         return target
+
+    def _pause_files(self) -> list[str]:
+        keys = ("pause_alert_file", "pause_announcement_file", "pause_resume_file")
+        return [self.cfg.get(k, "") for k in keys
+                if self.cfg.get(k, "") and Path(self.cfg.get(k, "")).is_file()]
+
+    def _prepare_event_audio(self, secs: list) -> None:
+        """Deja normalizados (en caché) todos los audios del evento y los de
+        pausa, para no tener que hacerlo al aire con el PTT activado.
+        Los archivos que ya estaban en caché no tardan nada.
+        Se puede llamar desde un hilo de fondo."""
+        from modules.audio.audio_player import cleanup_norm_cache
+        target       = float(self.cfg.get("normalize_target", -23.0))
+        pause_vol    = int(self.cfg.get("pause_volume", 80))
+        pause_target = target + (pause_vol - 100) * 0.4
+        t0 = time.time()
+        n  = 0
+        for s in secs:
+            ruta = s.get("ruta_archivo") or ""
+            if s.get("tipo") in ("Audio", "Sonido") and ruta and Path(ruta).is_file():
+                self._get_normalized_audio(ruta, target)
+                n += 1
+        for f in self._pause_files():
+            self._get_normalized_audio(f, pause_target)
+        log.info("Audios del evento preparados: %d secciones a %.1f, pausas a %.1f "
+                 "(%.1f s)", n, target, pause_target, time.time() - t0)
+        cleanup_norm_cache(Path(__file__).parent / "media" / "sonidos",
+                           [target, pause_target])
+
+    def _prewarm_event(self, ev_id: int) -> None:
+        """Prepara en segundo plano los audios de un evento que empieza pronto."""
+        if not self.cfg.get("section_normalize", False):
+            return
+        secs = [dict(s) for s in db.get_secciones_by_evento(ev_id)]
+        log.info("Preparando audios del evento id=%d antes de su hora", ev_id)
+
+        def _run():
+            try:
+                self._prepare_event_audio(secs)
+            except Exception as e:
+                log.warning("Preparación anticipada falló: %s", e)
+        threading.Thread(target=_run, daemon=True).start()
 
     def _get_normalized_audio(self, filepath: str, target: float) -> str:
         """Normaliza *filepath* al *target* indicado usando LUFS o dBFS según
@@ -961,4 +1039,8 @@ class MainWindow(tk.Tk):
         self.ptt.ptt_off_all()
         self.ptt.serial.disconnect()
         self.ptt.ami.disconnect()
+        try:
+            self._loop_meter.stop()
+        except Exception:
+            pass
         self.destroy()

@@ -8,6 +8,115 @@ from tkinter import ttk
 from ui_theme import C, FONTS, HSlider
 
 
+class LevelMeterWidget(tk.Canvas):
+    """Vúmetro horizontal en LUFS.
+
+    • Barra: nivel momentáneo (400 ms). Verde = normal, ámbar = fuerte
+      (más de 3 dB arriba del objetivo), rojo = pico cerca de saturar,
+      gris = muy bajo (más de 10 dB abajo del objetivo).
+    • Línea azul fija: nivel objetivo de normalización.
+    • Rayita clara: pico de los últimos 1.5 s.
+    • Número: nivel de los últimos 3 s.
+    """
+    LO, HI = -40.0, 0.0        # escala en dB
+    FALL_DB_PER_TICK = 1.5     # caída suave de la barra (por actualización)
+
+    def __init__(self, parent, width: int = 300):
+        super().__init__(parent, bg=C["bg"], highlightthickness=0, bd=0,
+                         width=width)
+        self._shown = self.LO
+        self._last = (None, "", -18.0)
+        self.bind("<Configure>", lambda e: self._draw())
+
+    def update_level(self, levels, source: str, target: float) -> None:
+        if levels is not None:
+            m = max(self.LO, min(self.HI, float(levels.momentary)))
+            # Sube de inmediato, baja suave (más fácil de leer)
+            self._shown = m if m >= self._shown else max(m, self._shown - self.FALL_DB_PER_TICK)
+        else:
+            self._shown = self.LO
+        self._last = (levels, source, target)
+        self._draw()
+
+    def _x(self, db: float, x0: int, w: int) -> float:
+        db = max(self.LO, min(self.HI, db))
+        return x0 + (db - self.LO) / (self.HI - self.LO) * w
+
+    def _draw(self) -> None:
+        levels, source, target = self._last
+        self.delete("all")
+        W = self.winfo_width()
+        H = self.winfo_height()
+        if W < 50 or H < 30:
+            return
+        x0, x1 = 2, W - 2
+        w = x1 - x0
+        bar_y0, bar_y1 = 24, 38
+
+        # Encabezado: NIVEL · fuente   |   valor LUFS
+        self.create_text(x0, 11, anchor="w", text="NIVEL",
+                         font=FONTS["badge"], fill=C["text3"])
+        self.create_text(x0 + 42, 11, anchor="w", text=source[:34],
+                         font=FONTS["small"], fill=C["text3"])
+
+        silent = levels is None or float(levels.momentary) <= -69
+        if silent:
+            val_txt, val_fg = "— LUFS", C["text3"]
+        else:
+            s = float(levels.short)
+            val_txt = f"{s:5.1f} LUFS"
+            val_fg = (C["warning"] if s > target + 3
+                      else C["text3"] if s < target - 10 else C["text"])
+        self.create_text(x1, 11, anchor="e", text=val_txt,
+                         font=FONTS["mono_sm"], fill=val_fg)
+
+        # Pista
+        self.create_rectangle(x0, bar_y0, x1, bar_y1,
+                              fill=C["surface2"], outline=C["border"])
+
+        # Barra
+        if not silent:
+            peak = float(levels.peak)
+            if peak > -1.0:
+                color = C["danger"]
+            elif self._shown > target + 3:
+                color = C["warning"]
+            elif self._shown < target - 10:
+                color = C["text3"]
+            else:
+                color = C["success"]
+            xe = self._x(self._shown, x0, w)
+            if xe > x0 + 1:
+                self.create_rectangle(x0 + 1, bar_y0 + 1, xe, bar_y1 - 1,
+                                      fill=color, outline="")
+            # Pico
+            xp = self._x(peak, x0, w)
+            self.create_line(xp, bar_y0 + 1, xp, bar_y1 - 1,
+                             fill=C["danger"] if peak > -1.0 else C["text"],
+                             width=2)
+
+        # Objetivo
+        xt = self._x(target, x0, w)
+        self.create_line(xt, bar_y0 - 3, xt, bar_y1 + 3,
+                         fill=C["accent"], width=2)
+
+        # Escala y pico en texto
+        for db in (-40, -30, -20, -10, 0):
+            xs = self._x(db, x0, w)
+            self.create_line(xs, bar_y1, xs, bar_y1 + 3, fill=C["text3"])
+            self.create_text(xs, bar_y1 + 10, text=str(db),
+                             anchor="w" if db == -40 else "e" if db == 0 else "center",
+                             font=FONTS["small"], fill=C["text3"])
+        self.create_text(xt, bar_y1 + 22, text=f"objetivo {target:g}",
+                         font=FONTS["small"], fill=C["accent"])
+        if not silent:
+            pk = float(levels.peak)
+            self.create_text(x1, bar_y1 + 22, anchor="e",
+                             text=f"pico {pk:.1f}",
+                             font=FONTS["small"],
+                             fill=C["danger"] if pk > -1.0 else C["text3"])
+
+
 class NPBar(tk.Frame):
     """
     Barra de control de transmisión al aire.
@@ -119,6 +228,12 @@ class NPBar(tk.Frame):
         tk.Frame(counter_frame, bg=C["border"], width=1).pack(
             side=tk.RIGHT, fill=tk.Y, pady=4)
 
+        # Medidor de nivel (vúmetro) — junto al volumen, visible en todas las pestañas
+        self._meter = LevelMeterWidget(counter_frame, width=300)
+        self._meter.pack(side=tk.RIGHT, fill=tk.Y, padx=(8, 8))
+        tk.Frame(counter_frame, bg=C["border"], width=1).pack(
+            side=tk.RIGHT, fill=tk.Y, pady=4)
+
         # Contadores — Canvas garantiza clipping duro en los bordes.
         # Los Label normales en Windows pueden pintar fuera de sus bounds.
         _col_defs = [
@@ -213,6 +328,10 @@ class NPBar(tk.Frame):
                           until_pause  if until_pause  is not None else "—")
         self._set_counter("s_pause_remain",
                           pause_remain if pause_remain is not None else "—")
+
+    def set_level(self, levels, source: str, target: float) -> None:
+        """Actualiza el medidor de nivel. *levels* es un Levels o None (sin dato)."""
+        self._meter.update_level(levels, source, target)
 
     def set_ptt_state(self, on: bool) -> None:
         """Actualiza el indicador PTT en el resumen."""

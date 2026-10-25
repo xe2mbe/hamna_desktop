@@ -22,3 +22,6 @@ paramiko>=3.4.0
 tkcalendar>=1.6.1      # widget de calendario en formularios
 
 # Azure TTS — integrado via REST, no requiere SDK adicional
+
+# Medidor de nivel: captura de la salida de audio (WASAPI loopback)
+pyaudiowpatch==0.2.12.7

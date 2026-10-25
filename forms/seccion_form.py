@@ -615,9 +615,31 @@ class SeccionForm(HDialog):
                                             titulo=titulo, descripcion=descrip)
                 dest = save_audio_file(self._selected_file, sec_id, src_stem)
                 db.update_seccion_ruta(sec_id, dest)
+            self._normalize_in_background(dest)
             self._finish(nombre)
         except Exception as e:
             messagebox.showerror("Error", str(e), parent=self)
+
+    @staticmethod
+    def _normalize_in_background(path: str) -> None:
+        """Deja el audio recién guardado ya normalizado (en caché), para que
+        al transmitir no haya que hacerlo con el PTT activado."""
+        import logging
+        import settings as cfg_mod
+        from modules.audio.audio_player import normalize_audio_file
+
+        cfg = cfg_mod.load()
+        if not cfg.get("section_normalize", False) or not path:
+            return
+        target    = float(cfg.get("normalize_target", -23.0))
+        cache_dir = Path(__file__).parent.parent / "media" / "sonidos"
+
+        def _run():
+            out = normalize_audio_file(path, target, cache_dir)
+            logging.getLogger(__name__).info(
+                "Audio normalizado al guardar la sección: %s → %s",
+                Path(path).name, Path(out).name)
+        threading.Thread(target=_run, daemon=True).start()
 
     # ── Footer centrado ───────────────────────────────────────────────────────
     def _centered_footer(self, buttons: list) -> None:

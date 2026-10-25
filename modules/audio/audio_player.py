@@ -196,29 +196,34 @@ def measure_dbfs(filepath: str, sample_ms: int = 10_000) -> float | None:
         return None
 
 
+def _lufs_of_segment(audio) -> float | None:
+    """Loudness integrado (ITU-R BS.1770-4) de un AudioSegment de pydub,
+    medido en MONO (promedio de canales), que es como sale al aire por radio.
+
+    Si se midiera en estéreo, un audio con la voz al centro marcaría ~3 dB
+    más que el mismo audio en mono, y al aire los estéreo sonarían más bajos.
+    """
+    import pyloudnorm as pyln
+    import numpy as np
+    samples = np.array(audio.get_array_of_samples(), dtype=np.float32)
+    samples /= 2 ** (audio.sample_width * 8 - 1)   # normalizar a [-1, 1]
+    if audio.channels > 1:
+        samples = samples.reshape((-1, audio.channels)).mean(axis=1)
+    lufs = pyln.Meter(audio.frame_rate).integrated_loudness(samples)
+    if lufs != lufs or lufs == float("-inf"):   # NaN o silencio total
+        return None
+    return round(lufs, 1)
+
+
 def measure_lufs(filepath: str) -> float | None:
-    """Mide el loudness integrado (LUFS / LKFS) según ITU-R BS.1770-4.
+    """Mide el loudness integrado (LUFS) en mono, como sale al aire.
 
     Requiere pyloudnorm + pydub.  Devuelve float (ej. -23.5) o None si
     pyloudnorm no está disponible, el archivo es silencioso o falla.
     """
     try:
-        import pyloudnorm as pyln
-        import numpy as np
         from pydub import AudioSegment
-
-        audio   = AudioSegment.from_file(filepath)
-        samples = np.array(audio.get_array_of_samples(), dtype=np.float32)
-        samples /= 2 ** (audio.sample_width * 8 - 1)   # normalizar a [-1, 1]
-        if audio.channels == 2:
-            samples = samples.reshape((-1, 2))
-
-        meter = pyln.Meter(audio.frame_rate)
-        lufs  = meter.integrated_loudness(samples)
-
-        if lufs != lufs or lufs == float("-inf"):   # NaN o silencio total
-            return None
-        return round(lufs, 1)
+        return _lufs_of_segment(AudioSegment.from_file(filepath))
     except Exception as exc:
         log.debug("measure_lufs('%s'): %s", filepath, exc)
         return None
@@ -233,17 +238,33 @@ def lufs_available() -> bool:
         return False
 
 
+# Versión del formato de caché. Al cambiar el algoritmo (p. ej. el margen de
+# picos) se sube el número para que los archivos viejos se regeneren.
+# v3: medición en mono + limitador de picos (alimiter de ffmpeg).
+NORM_CACHE_VERSION = "v3"
+# Techo del limitador. Se deja margen porque al volver a codificar a MP3 el
+# pico real sube ~0.5-1 dB; así queda bajo −1 dBTP.
+NORM_PEAK_LIMIT_DB = -2.0
+
+_norm_lock = threading.Lock()
+
+
+def _norm_tag(target: float) -> str:
+    return str(float(target)).replace("-", "n").replace(".", "d")
+
+
 def normalize_audio_file(filepath: str, target: float,
                           cache_dir: "Path | str | None" = None) -> str:
     """Normaliza un archivo de audio al nivel *target* y devuelve la ruta
     del archivo resultante (cacheado).
 
     Usa LUFS (ITU-R BS.1770) si pyloudnorm está disponible; de lo contrario
-    usa dBFS (RMS pydub).  Incluye limitador de true-peak a −0.5 dBTP para
-    evitar clipping.
+    usa dBFS (RMS pydub).  Limita el pico de muestra a NORM_PEAK_LIMIT_DB
+    para evitar saturación.
 
     *cache_dir* — directorio de caché; si es None usa el mismo directorio
     del archivo fuente.  Devuelve *filepath* original ante cualquier fallo.
+    Es seguro llamarla desde varios hilos.
     """
     src = Path(filepath)
     if not src.is_file():
@@ -254,23 +275,31 @@ def normalize_audio_file(filepath: str, target: float,
 
     use_lufs = lufs_available()
     method   = "lufs" if use_lufs else "dbfs"
-    t_tag    = str(target).replace("-", "n").replace(".", "d")
-    cache_path = _cache_dir / f"_norm_{src.stem}_{method}_{t_tag}{src.suffix}"
+    cache_path = _cache_dir / (f"_norm_{src.stem}_{method}_{_norm_tag(target)}"
+                               f"_{NORM_CACHE_VERSION}{src.suffix}")
 
-    src_mtime = src.stat().st_mtime
-    if cache_path.is_file() and cache_path.stat().st_mtime >= src_mtime:
-        return str(cache_path)
+    with _norm_lock:
+        # La caché lleva la misma fecha que el original; si el original cambia
+        # (aunque sea por uno con el mismo nombre) la fecha ya no coincide.
+        src_mtime = src.stat().st_mtime
+        if cache_path.is_file() and abs(cache_path.stat().st_mtime - src_mtime) < 1:
+            return str(cache_path)
+        return _normalize_to_cache(src, filepath, target, use_lufs, method,
+                                   cache_path, src_mtime)
 
+
+def _normalize_to_cache(src: Path, filepath: str, target: float,
+                        use_lufs: bool, method: str, cache_path: Path,
+                        src_mtime: float) -> str:
     try:
         from pydub import AudioSegment
         audio = AudioSegment.from_file(str(src))
 
         # Medir nivel actual
+        current = None
         if use_lufs:
-            current = measure_lufs(str(src))
-            if current is None:                     # archivo muy corto → dBFS
-                current = audio.dBFS
-        else:
+            current = _lufs_of_segment(audio)
+        if current is None:                     # sin pyloudnorm o muy corto → dBFS
             current = audio.dBFS
 
         if current is None or current == float("-inf"):
@@ -279,25 +308,68 @@ def normalize_audio_file(filepath: str, target: float,
         change_dB = target - current
         # Nunca boostar más de +20 dB para evitar saturación extrema
         change_dB = min(change_dB, 20.0)
-        normalized = audio.apply_gain(change_dB)
 
-        # Limitador de true-peak: retrocede si hay clipping
-        peak = normalized.max_dBFS
-        if peak > -0.5:
-            normalized = normalized.apply_gain(-0.5 - peak)
+        # Ganancia + limitador: el limitador solo recorta los picos que se
+        # pasan del techo, sin bajar el volumen del resto del audio.
+        # (Antes se bajaba todo el archivo, y los audios con picos altos
+        # quedaban por debajo del nivel objetivo.)
+        limit_lin = 10 ** (NORM_PEAK_LIMIT_DB / 20)
+        ext = src.suffix.lower() or ".mp3"
+        tmp = cache_path.with_name(cache_path.stem + ".tmp" + ext)
+        cf  = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
-        fmt = src.suffix.lstrip(".").lower() or "mp3"
-        if fmt == "m4a":
-            fmt = "mp4"
-        normalized.export(str(cache_path), format=fmt)
+        def _render(gain_dB: float) -> None:
+            af = (f"volume={gain_dB:.2f}dB,"
+                  f"alimiter=limit={limit_lin:.4f}:attack=5:release=50:level=0")
+            cmd = [AudioSegment.converter or "ffmpeg", "-y", "-v", "error",
+                   "-i", str(src), "-vn", "-map_metadata", "-1", "-af", af]
+            if ext == ".mp3":
+                cmd += ["-b:a", "192k"]
+            cmd.append(str(tmp))
+            r = subprocess.run(cmd, capture_output=True, creationflags=cf)
+            if r.returncode != 0 or not tmp.is_file():
+                raise RuntimeError(r.stderr.decode("utf-8", "replace").strip()[:300])
+
+        _render(change_dB)
+        result = measure_lufs(str(tmp)) if use_lufs else None
+        # El limitador le quita algo de volumen a los audios con muchos picos;
+        # una segunda pasada compensa esa diferencia.
+        if result is not None and abs(target - result) > 0.5:
+            change_dB = min(change_dB + (target - result), 20.0)
+            _render(change_dB)
+            result = measure_lufs(str(tmp))
+
+        os.replace(tmp, cache_path)
         os.utime(str(cache_path), (src_mtime, src_mtime))
-        log.info("Normalizado (%s): %s  %.1f → %.1f  (cache: %s)",
-                 method.upper(), src.name, current, target, cache_path.name)
+        log.info("Normalizado (%s): %s  %.1f → %s  (objetivo %.1f, cache: %s)",
+                 method.upper(), src.name, current,
+                 f"{result:.1f}" if result is not None else "?",
+                 target, cache_path.name)
         return str(cache_path)
 
     except Exception as exc:
         log.warning("Error normalizando '%s': %s", filepath, exc)
         return filepath
+
+
+def cleanup_norm_cache(cache_dir: "Path | str", keep_targets: list[float]) -> int:
+    """Borra de *cache_dir* los archivos normalizados (_norm_*) que ya no
+    sirven: los de versiones anteriores del formato o de otros niveles.
+    Solo toca archivos de caché, que se pueden volver a generar.
+    Devuelve cuántos borró."""
+    keep = {f"_{_norm_tag(t)}_{NORM_CACHE_VERSION}" for t in keep_targets}
+    borrados = 0
+    for f in Path(cache_dir).glob("_norm_*"):
+        if any(f.stem.endswith(k) for k in keep):
+            continue
+        try:
+            f.unlink()
+            borrados += 1
+        except OSError:
+            pass   # en uso: se intentará la próxima vez
+    if borrados:
+        log.info("Caché de normalización: %d archivos viejos borrados", borrados)
+    return borrados
 
 
 class AudioPlayer:
@@ -323,6 +395,11 @@ class AudioPlayer:
         self.on_error       : callable | None = None
         self._monitor_thread: threading.Thread | None = None
         self._subproc       : subprocess.Popen | None = None  # modo subprocess
+        self.volume_pct     = 100   # último volumen aplicado (lo usa el medidor)
+
+    @property
+    def current_file(self) -> str | None:
+        return self._current
 
     # ── API pública ────────────────────────────────────────────────────────────
     def play_from_ms(self, filepath: str, start_ms: int,
@@ -470,6 +547,7 @@ class AudioPlayer:
     def set_volume(self, pct: int) -> None:
         """pct: 0–100"""
         pct = max(0, min(100, pct))
+        self.volume_pct = pct
         if self._use_subprocess:
             return  # no disponible en modo subprocess
         if _pygame_ok:
